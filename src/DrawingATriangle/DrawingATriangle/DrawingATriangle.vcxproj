@@ -77,7 +77,7 @@
     <LibraryPath>$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)..\..\bin\$(ProjectName)$(PlatformName)$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)..\..\temp\$(ProjectName)$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.54.0\Include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)..\..\3rdParty\stb_image;$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.54.0\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
@@ -87,7 +87,7 @@
     <LibraryPath>$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)..\..\bin\$(ProjectName)$(PlatformName)$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)..\..\temp\$(ProjectName)$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.54.0\Include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)..\..\3rdParty\stb_image;$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.54.0\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
