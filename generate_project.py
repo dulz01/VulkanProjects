@@ -5,7 +5,7 @@ import string
 import stat
 import shutil
 
-proto_dir = 'src/VulkanTest/'
+proto_dir = 'src/DrawingATriangle/'
 target_dir = 'src/'
 
 def make_example(src_dir, dest_dir, projname, depth):
@@ -16,8 +16,8 @@ def make_example(src_dir, dest_dir, projname, depth):
     pass
   for fname in dircache.listdir(src_dir):
     mode = os.stat(src_dir + fname).st_mode
-    if 'VulkanTest' in fname:
-      dest_name = string.replace(fname, 'VulkanTest', projname)
+    if 'DrawingATriangle' in fname:
+      dest_name = string.replace(fname, 'DrawingATriangle', projname)
     else:
       dest_name = fname
     print(depth, "fname", fname)
@@ -31,13 +31,13 @@ def make_example(src_dir, dest_dir, projname, depth):
       except:
         out = open(dest_dir + '/' + dest_name, "wb")
         for line in open(src_dir + fname):
-          line = string.replace(line, 'VulkanTest', projname)
+          line = string.replace(line, 'DrawingATriangle', projname)
           out.write(line)
 
 num_args = len(sys.argv)
 
 if num_args == 1 or "--help" in sys.argv:
-  print("\nmakes or updates a new octet project in src/")
+  print("\nmakes or updates a new vulkan project in src/")
   print("\nusage: generate_project.py projectname")
   exit()
 

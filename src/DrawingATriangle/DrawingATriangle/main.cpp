@@ -1014,7 +1014,6 @@ private:
     }
   }
 
-
   void createVertexBuffer() {
     VkDeviceSize buffer_size = sizeof(vertices[0]) * vertices.size();
 
