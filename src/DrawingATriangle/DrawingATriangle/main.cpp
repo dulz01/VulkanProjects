@@ -1,3 +1,4 @@
+// Vulkan header integrated with GLFW
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -13,13 +14,17 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
-#include <iostream>
-#include <fstream>
+// Reporting and propagating errors
 #include <stdexcept>
+#include <iostream>
+
+// for strcmp
+#include <cstring>
+
+#include <fstream>
 #include <algorithm>
 #include <chrono>
 #include <vector>
-#include <cstring>
 #include <array>
 #include <set>
 #include <unordered_map>
@@ -30,6 +35,7 @@ const int HEIGHT = 600;
 const std::string MODEL_PATH = "models/chalet.obj";
 const std::string TEXTURE_PATH = "textures/chalet.jpg";
 
+// shows which validation layers are included
 const std::vector<const char*> validation_layers = {
   "VK_LAYER_LUNARG_standard_validation"
 };
@@ -38,13 +44,20 @@ const std::vector<const char*> device_extensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
+// activate validation layers depending on configuration mode
 #ifdef NDEBUG
 const bool enable_validation_layers = false;
 #else
 const bool enable_validation_layers = true;
 #endif
 
-VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCallbackCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback) {
+// looking up the address of the extension to be exclusively loaded
+VkResult CreateDebugReportCallbackEXT(VkInstance instance, 
+  const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
+  const VkAllocationCallbacks* pAllocator,
+  VkDebugReportCallbackEXT* pCallback)
+{
+  // returns a nullptr if the extension function is not loaded
   auto func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
   if (func != nullptr) {
     return func(instance, pCreateInfo, pAllocator, pCallback);
@@ -54,7 +67,11 @@ VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCa
   }
 }
 
-void DestroyDebugReportCallbackEXT(VkInstance instance, VkDebugReportCallbackEXT callback, const VkAllocationCallbacks* pAllocator) {
+// This function has to be either static or outside the class in order to be called in cleanup
+void DestroyDebugReportCallbackEXT(VkInstance instance,
+  VkDebugReportCallbackEXT callback,
+  const VkAllocationCallbacks* pAllocator)
+{
   auto func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
   if (func != nullptr) {
     func(instance, callback, pAllocator);
@@ -62,7 +79,8 @@ void DestroyDebugReportCallbackEXT(VkInstance instance, VkDebugReportCallbackEXT
 }
 
 struct QueueFamilyIndices {
-  int graphics_family = -1;
+  // -1 denotes "not found"
+  int graphics_family = -1; 
   int present_family = -1;
 
   bool isComplete() {
@@ -145,8 +163,8 @@ private:
   VkInstance instance_;
   VkDebugReportCallbackEXT callback_;
   VkSurfaceKHR surface_;
-
-  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+    
+  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE; // implicitly destroyed with VkInstance
   VkDevice device_;
 
   VkQueue graphics_queue_;
@@ -194,10 +212,12 @@ private:
   VkSemaphore render_finished_semaphore_;
 
   void initWindow() {
-    glfwInit();
+    glfwInit(); // Initialize GLFW
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    // GLFW_NO_API tells GLFW not to create an OpenGL context
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); 
 
+    // store a reference to the window when creating it
     window_ = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
 
     glfwSetWindowUserPointer(window_, this);
@@ -232,6 +252,8 @@ private:
   }
 
   void mainLoop() {
+    // keeping the application running until an error...
+    // ... or the window is closed
     while (!glfwWindowShouldClose(window_)) {
       glfwPollEvents();
 
@@ -293,10 +315,12 @@ private:
     vkDestroyDevice(device_, nullptr);
     DestroyDebugReportCallbackEXT(instance_, callback_, nullptr);
     vkDestroySurfaceKHR(instance_, surface_, nullptr);
+
+    // must be destroyed right before the program exits
     vkDestroyInstance(instance_, nullptr);
 
+    // clean up resources and terminating GLFW
     glfwDestroyWindow(window_);
-
     glfwTerminate();
   }
 
@@ -320,12 +344,14 @@ private:
     createFramebuffers();
     createCommandBuffers();
   }
-
+  
   void createInstance() {
+    // checking if validation layers are available when enabled
     if (enable_validation_layers && !checkValidationLayerSupport()) {
       throw std::runtime_error("Validation layers requested, but not available!");
     }
 
+    // optional data
     VkApplicationInfo app_info = {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "Hello Triangle";
@@ -334,6 +360,8 @@ private:
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.apiVersion = VK_API_VERSION_1_0;
 
+    // required data
+    // tells Vulkan which global extensions and validations to use
     VkInstanceCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     create_info.pApplicationInfo = &app_info;
@@ -342,6 +370,7 @@ private:
     create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     create_info.ppEnabledExtensionNames = extensions.data();
 
+    // included validation layer data into the struct if enabled
     if (enable_validation_layers) {
       create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
       create_info.ppEnabledLayerNames = validation_layers.data();
@@ -350,17 +379,25 @@ private:
       create_info.enabledLayerCount = 0;
     }
 
+    // *first param: pointer to struct with creation info
+    // *second param: pointer to custom allocator callbacks
+    // *third param: pointer to the variable that stores the handle to the new object
     if (vkCreateInstance(&create_info, nullptr, &instance_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create instance!");
     }
   }
 
+  // telling Vulkan about the callback function
   void setupDebugCallback() {
     if (!enable_validation_layers) { return; }
-
+    
     VkDebugReportCallbackCreateInfoEXT create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+
+    // allows you to filter what type of messages you would like to receive
     create_info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+
+    // specifies the pointer to the callback function
     create_info.pfnCallback = debugCallback;
 
     if (CreateDebugReportCallbackEXT(instance_, &create_info, nullptr, &callback_) != VK_SUCCESS) {
@@ -378,13 +415,16 @@ private:
     uint32_t device_count = 0;
     vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
 
+    // no point going further if there's no devices with Vulkan support
     if (device_count == 0) {
       throw std::runtime_error("Failed to find GPUs with Vulkan support!");
     }
 
+    // allocates an array to hold all of the VkPhysicalDevice handles
     std::vector<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(instance_, &device_count, devices.data());
 
+    // checks if the physical devices meet any requirements set in isDeviceSuitable()
     for (const auto& device : devices) {
       if (isDeviceSuitable(device)) {
         physical_device_ = device;
@@ -403,8 +443,13 @@ private:
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
     std::set<int> unique_queue_families = { indices.graphics_family, indices.present_family };
 
+    // Vulkan lets you assign priorities to queues to influence scheduling...
+    // ...of the command buffer execution.
+    // between floating point numbers 0.0 and 1.0
+    // required, even if there's a single queue
     float queue_priority = 1.0f;
     for (int queue_family : unique_queue_families) {
+      // this struct describes the number of queues we want for a single queue family
       VkDeviceQueueCreateInfo queue_create_info = {};
       queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
       queue_create_info.queueFamilyIndex = queue_family;
@@ -412,18 +457,23 @@ private:
       queue_create_info.pQueuePriorities = &queue_priority;
       queue_create_infos.push_back(queue_create_info);
     }
-
+    
+    // specifying what set of device features we'll be using
     VkPhysicalDeviceFeatures device_features = {};
     device_features.samplerAnisotropy = VK_TRUE;
 
+    // creating the logical device
     VkDeviceCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 
+    // pointers to the queue create info
     create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
     create_info.pQueueCreateInfos = queue_create_infos.data();
 
+    // pointer to the device feature
     create_info.pEnabledFeatures = &device_features;
 
+    // extensions and validation layers
     create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
     create_info.ppEnabledExtensionNames = device_extensions.data();
 
@@ -435,10 +485,12 @@ private:
       create_info.enabledLayerCount = 0;
     }
 
+    // instantiating the logical device with specified info
     if (vkCreateDevice(physical_device_, &create_info, nullptr, &device_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create logical device!");
     }
 
+    // retrieving the queue handles for each queue family
     vkGetDeviceQueue(device_, indices.graphics_family, 0, &graphics_queue_);
     vkGetDeviceQueue(device_, indices.present_family, 0, &present_queue_);
   }
@@ -1431,6 +1483,7 @@ private:
   }
 
   bool isDeviceSuitable(VkPhysicalDevice device) {
+    // checks if device can process commands we want to use
     QueueFamilyIndices indices = findQueueFamilies(device);
 
     bool extensions_supported = checkDeviceExtensionSupport(device);
@@ -1463,15 +1516,19 @@ private:
     return required_extensions.empty();
   }
 
+  // function returns the indices of the queue families that satisfy certain desired properties
   QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
 
+    // getting the count
     uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
 
+    // getting the list of queue families
     std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
+    // check if the queue family has the required operations
     int i = 0;
     for (const auto& queue_family : queue_families) {
       if (queue_family.queueCount > 0 && queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -1500,13 +1557,17 @@ private:
 
     unsigned int glfw_extension_count = 0;
     const char** glfw_extensions;
+
+    // always required
     glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
     for (unsigned int i = 0; i < glfw_extension_count; i++) {
       extensions.push_back(glfw_extensions[i]);
     }
 
+    // added to receive messages from the validation layers
     if (enable_validation_layers) {
+      // VK_EXT_DEBUG_REPORT_EXTENSION_NAME is a macro that avoids typos
       extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     }
 
@@ -1517,9 +1578,11 @@ private:
     uint32_t layer_count;
     vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
 
+    // list all available validation layer extensions
     std::vector<VkLayerProperties> available_layers(layer_count);
     vkEnumerateInstanceLayerProperties(&layer_count, available_layers.data());
 
+    // check if all of the layers in validation_layers exist in available_layers
     for (const char* layer_name : validation_layers) {
       bool layer_found = false;
 
@@ -1556,7 +1619,21 @@ private:
     return buffer;
   }
 
-  static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT obj_type, uint64_t obj, size_t location, int32_t code, const char* layer_prefix, const char* msg, void* user_data) {
+  // VKAPI_ATTR and VKAPI_CALL ensure the function has the right signature for Vulkan to call it
+  // *first param: type of message
+  // *second param: specifies the type of object that is the subject of the message
+  // *eighth param: contains the message itself
+  // *ninth param: you can pass your own data to the callback
+  // This function is used to test validation layers themselves
+  static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags,
+    VkDebugReportObjectTypeEXT obj_type,
+    uint64_t obj,
+    size_t location,
+    int32_t code,
+    const char* layer_prefix,
+    const char* msg,
+    void* user_data)
+  {
     std::cerr << "Validation layer: " << msg << std::endl;
 
     return VK_FALSE;
