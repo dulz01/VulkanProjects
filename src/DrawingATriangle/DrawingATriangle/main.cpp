@@ -63,7 +63,10 @@ const bool enable_validation_layers = true;
 //-----------------------------------------------------------------------------
 // Purpose: looking up the address of the extension to be exclusively loaded
 //-----------------------------------------------------------------------------
-VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCallbackCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback) {
+VkResult CreateDebugReportCallbackEXT(VkInstance instance,
+  const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
+  const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback)
+{
   // returns a nullptr if the extension function is not loaded
   auto func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
   if (func != nullptr) {
@@ -265,7 +268,9 @@ private:
 
     // presentation
     createSwapChain();
-    createImageViews();
+    createImageViews(); // must be after creating the swap chain
+
+    // graphics pipeline
     createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
@@ -638,7 +643,7 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: 
+  // Purpose: creates a basic image view for every image in the swap chain
   //---------------------------------------------------------------------------
   void createImageViews() {
     swap_chain_image_views_.resize(swap_chain_images_.size());
@@ -1029,10 +1034,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: 
   //---------------------------------------------------------------------------
-  VkImageView createImageView(VkImage image,
-    VkFormat format,
-    VkImageAspectFlags aspect_flags)
-  {
+  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) {
     VkImageViewCreateInfo view_info = {};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = image;
@@ -1163,11 +1165,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: 
   //---------------------------------------------------------------------------
-  void copyBufferToImage(VkBuffer buffer,
-    VkImage image,
-    uint32_t width,
-    uint32_t height)
-  {
+  void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
     VkCommandBuffer command_buffer = beginSingleTimeCommands();
 
     VkBufferImageCopy region = {};
@@ -1445,9 +1443,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: 
   //---------------------------------------------------------------------------
-  uint32_t findMemoryType(uint32_t type_filter,
-    VkMemoryPropertyFlags properties)
-  {
+  uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties mem_properties;
     vkGetPhysicalDeviceMemoryProperties(physical_device_, &mem_properties);
 
@@ -1897,13 +1893,8 @@ private:
   // This function is used to test validation layers themselves
   //---------------------------------------------------------------------------
   static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags,
-    VkDebugReportObjectTypeEXT obj_type,
-    uint64_t obj,
-    size_t location,
-    int32_t code,
-    const char* layer_prefix,
-    const char* msg,
-    void* user_data)
+    VkDebugReportObjectTypeEXT obj_type, uint64_t obj, size_t location, int32_t code,
+    const char* layer_prefix, const char* msg, void* user_data)
   {
     std::cerr << "Validation layer: " << msg << std::endl;
 
