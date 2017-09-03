@@ -307,7 +307,7 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: 
+  // Purpose: Cleaning up objects related to the swap chain
   //---------------------------------------------------------------------------
   void cleanupSwapChain() {
     vkDestroyImageView(device_, depth_image_view_, nullptr);
@@ -332,7 +332,7 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: 
+  // Purpose: Destroying all the Vulkan objects explicitly created by us
   //---------------------------------------------------------------------------
   void cleanup() {
     // must be done before device
@@ -1038,8 +1038,11 @@ private:
     VkImageViewCreateInfo view_info = {};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = image;
-    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view_info.viewType = VK_IMAGE_VIEW_TYPE_2D; // allows you to treat images as 1D, 2D, 3D textures or cube maps
     view_info.format = format;
+
+    // these fields allow you to describe what the image's purpose is and which part is accessed
+    // if a stereoscopic 3D application is being made, you can access different layers to make views for the left and right eye
     view_info.subresourceRange.aspectMask = aspect_flags;
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.levelCount = 1;
