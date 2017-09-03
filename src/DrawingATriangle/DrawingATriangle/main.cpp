@@ -18,11 +18,13 @@
 #include <stdexcept>
 #include <iostream>
 
-// for strcmp
+// for strcmp function
 #include <cstring>
 
-#include <fstream>
+// for max and min functions
 #include <algorithm>
+
+#include <fstream>
 #include <chrono>
 #include <vector>
 #include <array>
@@ -35,28 +37,33 @@ const int HEIGHT = 600;
 const std::string MODEL_PATH = "models/chalet.obj";
 const std::string TEXTURE_PATH = "textures/chalet.jpg";
 
-// shows which validation layers are included
+//-----------------------------------------------------------------------------
+// Purpose: shows which validation layers are required
+//-----------------------------------------------------------------------------
 const std::vector<const char*> validation_layers = {
   "VK_LAYER_LUNARG_standard_validation"
 };
 
+//-----------------------------------------------------------------------------
+// Purpose: shows required device extensions
+//----------------------------------------------------------------------------- 
 const std::vector<const char*> device_extensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-// activate validation layers depending on configuration mode
+//-----------------------------------------------------------------------------
+// Purpose: activate validation layers depending on configuration mode
+//----------------------------------------------------------------------------- 
 #ifdef NDEBUG
 const bool enable_validation_layers = false;
 #else
 const bool enable_validation_layers = true;
 #endif
 
-// looking up the address of the extension to be exclusively loaded
-VkResult CreateDebugReportCallbackEXT(VkInstance instance, 
-  const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
-  const VkAllocationCallbacks* pAllocator,
-  VkDebugReportCallbackEXT* pCallback)
-{
+//-----------------------------------------------------------------------------
+// Purpose: looking up the address of the extension to be exclusively loaded
+//-----------------------------------------------------------------------------
+VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCallbackCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback) {
   // returns a nullptr if the extension function is not loaded
   auto func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
   if (func != nullptr) {
@@ -67,17 +74,20 @@ VkResult CreateDebugReportCallbackEXT(VkInstance instance,
   }
 }
 
-// This function has to be either static or outside the class in order to be called in cleanup
-void DestroyDebugReportCallbackEXT(VkInstance instance,
-  VkDebugReportCallbackEXT callback,
-  const VkAllocationCallbacks* pAllocator)
-{
+//-----------------------------------------------------------------------------
+// Note: This function has to be either static or outside the class in order...
+// ...to be called in cleanup
+//-----------------------------------------------------------------------------
+void DestroyDebugReportCallbackEXT(VkInstance instance, VkDebugReportCallbackEXT callback, const VkAllocationCallbacks* pAllocator) {
   auto func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
   if (func != nullptr) {
     func(instance, callback, pAllocator);
   }
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
 struct QueueFamilyIndices {
   // -1 denotes "not found"
   int graphics_family = -1; 
@@ -88,12 +98,18 @@ struct QueueFamilyIndices {
   }
 };
 
+//-----------------------------------------------------------------------------
+// Purpose: holds the properties a swap chain needs to be created
+//-----------------------------------------------------------------------------
 struct SwapChainSupportDetails {
   VkSurfaceCapabilitiesKHR capabilities;
   std::vector<VkSurfaceFormatKHR> formats;
   std::vector<VkPresentModeKHR> present_modes;
 };
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
 struct Vertex {
   glm::vec3 pos;
   glm::vec3 colour;
@@ -134,6 +150,9 @@ struct Vertex {
   }
 };
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
 namespace std {
   template<> struct hash<Vertex> {
     size_t operator()(Vertex const& vertex) const {
@@ -142,6 +161,9 @@ namespace std {
   };
 }
 
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
 struct UniformBufferObject {
   glm::mat4 model;
   glm::mat4 view;
@@ -150,6 +172,9 @@ struct UniformBufferObject {
 
 class HelloTriangleApplication {
 public:
+  //---------------------------------------------------------------------------
+  // Purpose: run all the important functions
+  //---------------------------------------------------------------------------
   void run() {
     initWindow();
     initVulkan();
@@ -171,7 +196,7 @@ private:
   VkQueue present_queue_;
 
   VkSwapchainKHR swap_chain_;
-  std::vector<VkImage> swap_chain_images_;
+  std::vector<VkImage> swap_chain_images_; // implicitly created and destroyed
   VkFormat swap_chain_image_format_;
   VkExtent2D swap_chain_extent_;
   std::vector<VkImageView> swap_chain_image_views_;
@@ -211,6 +236,9 @@ private:
   VkSemaphore image_available_semaphore_;
   VkSemaphore render_finished_semaphore_;
 
+  //---------------------------------------------------------------------------
+  // Purpose: initialise the windowing system
+  //---------------------------------------------------------------------------
   void initWindow() {
     glfwInit(); // Initialize GLFW
 
@@ -224,12 +252,18 @@ private:
     glfwSetWindowSizeCallback(window_, HelloTriangleApplication::onWindowResized);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: calls all the functions required to initialise Vulkan
+  //---------------------------------------------------------------------------
   void initVulkan() {
+    // setup
     createInstance();
     setupDebugCallback();
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+
+    // presentation
     createSwapChain();
     createImageViews();
     createRenderPass();
@@ -251,6 +285,9 @@ private:
     createSemaphores();
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void mainLoop() {
     // keeping the application running until an error...
     // ... or the window is closed
@@ -264,6 +301,9 @@ private:
     vkDeviceWaitIdle(device_);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void cleanupSwapChain() {
     vkDestroyImageView(device_, depth_image_view_, nullptr);
     vkDestroyImage(device_, depth_image_, nullptr);
@@ -286,7 +326,11 @@ private:
     vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void cleanup() {
+    // must be done before device
     cleanupSwapChain();
 
     vkDestroySampler(device_, texture_sampler_, nullptr);
@@ -314,23 +358,34 @@ private:
 
     vkDestroyDevice(device_, nullptr);
     DestroyDebugReportCallbackEXT(instance_, callback_, nullptr);
+
+    // must be destroyed before the instance
     vkDestroySurfaceKHR(instance_, surface_, nullptr);
 
     // must be destroyed right before the program exits
-    vkDestroyInstance(instance_, nullptr);
+    vkDestroyInstance(instance_, nullptr); 
 
     // clean up resources and terminating GLFW
     glfwDestroyWindow(window_);
     glfwTerminate();
   }
 
-  static void onWindowResized(GLFWwindow* window, int width, int height) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  static void onWindowResized(GLFWwindow* window,
+    int width,
+    int height)
+  {
     if (width == 0 || height == 0) { return; }
 
     HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
     app->recreateSwapChain();
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void recreateSwapChain() {
     vkDeviceWaitIdle(device_);
 
@@ -345,6 +400,9 @@ private:
     createCommandBuffers();
   }
   
+  //---------------------------------------------------------------------------
+  // Purpose: Initializing Vulkan with an instance
+  //---------------------------------------------------------------------------
   void createInstance() {
     // checking if validation layers are available when enabled
     if (enable_validation_layers && !checkValidationLayerSupport()) {
@@ -387,7 +445,9 @@ private:
     }
   }
 
-  // telling Vulkan about the callback function
+  //---------------------------------------------------------------------------
+  // Purpose: telling Vulkan about the callback function
+  //---------------------------------------------------------------------------
   void setupDebugCallback() {
     if (!enable_validation_layers) { return; }
     
@@ -405,12 +465,18 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: create a window surface using GLFW's function
+  //---------------------------------------------------------------------------
   void createSurface() {
     if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create window surface!");
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void pickPhysicalDevice() {
     uint32_t device_count = 0;
     vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
@@ -437,6 +503,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
 
@@ -495,58 +564,82 @@ private:
     vkGetDeviceQueue(device_, indices.present_family, 0, &present_queue_);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: create the swap chain
+  //---------------------------------------------------------------------------
   void createSwapChain() {
     SwapChainSupportDetails swap_chain_support = querySwapChainSupport(physical_device_);
 
+    // getting the three required pieces of information from helper functions
     VkSurfaceFormatKHR surface_format = chooseSwapSurfaceFormat(swap_chain_support.formats);
     VkPresentModeKHR present_mode = chooseSwapPresentMode(swap_chain_support.present_modes);
     VkExtent2D extent = chooseSwapExtent(swap_chain_support.capabilities);
 
+    // setting the number of images in the swap chain.
     uint32_t image_count = swap_chain_support.capabilities.minImageCount + 1;
+    
+    // must check if maxImageCount is set to 0 and clamp the image count by making sure it doesn't go over maxImageCount
+    // if maxImageCount is set to 0, there would be an unlimited number of images until memory runs out
     if (swap_chain_support.capabilities.maxImageCount > 0 && image_count > swap_chain_support.capabilities.maxImageCount) {
       image_count = swap_chain_support.capabilities.maxImageCount;
     }
 
+    // filling out the Vulkan object structure for the swap chain
     VkSwapchainCreateInfoKHR create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     create_info.surface = surface_;
 
+    // the acquired information above is input here
     create_info.minImageCount = image_count;
     create_info.imageFormat = surface_format.format;
     create_info.imageColorSpace = surface_format.colorSpace;
     create_info.imageExtent = extent;
-    create_info.imageArrayLayers = 1;
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
+    create_info.imageArrayLayers = 1; // always set to 1 unless developing stereoscopic 3D application
+    
+    // this settings means will render directly to the image
+    // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; 
+    
+    // specifying how to handle swap chain images across multiple queue families
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
+    
+    // specifying which queue families are sharing images in VK_SHARING_MODE_CONCURRENT 
     uint32_t queue_family_indices[] = { (uint32_t)indices.graphics_family, (uint32_t)indices.present_family };
 
+    // VK_SHARING_MODE_CONCURRENT allows images to be shared among multiple queue families
     if (indices.graphics_family != indices.present_family) {
       create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
       create_info.queueFamilyIndexCount = 2;
       create_info.pQueueFamilyIndices = queue_family_indices;
     }
+
+    // VK_SHARING_MODE_EXCLUSIVE makes it so an image has to be explicitly transferred from one queue family to another
     else {
       create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-    create_info.preTransform = swap_chain_support.capabilities.currentTransform;
-    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_info.preTransform = swap_chain_support.capabilities.currentTransform; // transforms applied to images in the swap chain
+    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // almost always want to ignore the alpha channel
     create_info.presentMode = present_mode;
-    create_info.clipped = VK_TRUE;
+    create_info.clipped = VK_TRUE; // obscured pixels won't be calculated
 
     if (vkCreateSwapchainKHR(device_, &create_info, nullptr, &swap_chain_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create swap chain");
     }
 
+    // retrieving handles just like any other retrieval of array of objects from Vulkan
     vkGetSwapchainImagesKHR(device_, swap_chain_, &image_count, nullptr);
     swap_chain_images_.resize(image_count);
     vkGetSwapchainImagesKHR(device_, swap_chain_, &image_count, swap_chain_images_.data());
 
+    // storing format and extent to member variables for future use.
     swap_chain_image_format_ = surface_format.format;
     swap_chain_extent_ = extent;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createImageViews() {
     swap_chain_image_views_.resize(swap_chain_images_.size());
 
@@ -555,6 +648,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createRenderPass() {
     VkAttachmentDescription colour_attachment = {};
     colour_attachment.format = swap_chain_image_format_;
@@ -613,6 +709,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createDescriptorSetLayout() {
     VkDescriptorSetLayoutBinding ubo_layout_binding = {};
     ubo_layout_binding.binding = 0;
@@ -639,6 +738,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createGraphicsPipeline() {
     auto vert_shader_code = readFile("shaders/vert.spv");
     auto frag_shader_code = readFile("shaders/frag.spv");
@@ -766,6 +868,9 @@ private:
     vkDestroyShaderModule(device_, vert_shader_module, nullptr);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createFramebuffers() {
     swap_chain_framebuffers_.resize(swap_chain_image_views_.size());
 
@@ -790,6 +895,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createCommandPool() {
     QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
 
@@ -802,6 +910,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createDepthResources() {
     VkFormat depth_format = findDepthFormat();
 
@@ -811,7 +922,13 @@ private:
     transitionImageLayout(depth_image_, depth_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
   }
 
-  VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
+    VkImageTiling tiling,
+    VkFormatFeatureFlags features)
+  {
     for (VkFormat format : candidates) {
       VkFormatProperties props;
       vkGetPhysicalDeviceFormatProperties(physical_device_, format, &props);
@@ -827,6 +944,9 @@ private:
     throw std::runtime_error("Failed to find supported format!");
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   VkFormat findDepthFormat() {
     return findSupportedFormat(
     { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -835,10 +955,16 @@ private:
     );
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   bool hasStencilComponent(VkFormat format) {
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createTextureImage() {
     int tex_width, tex_height, tex_channels;
     stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
@@ -869,10 +995,16 @@ private:
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createTextureImageView() {
     texture_image_view_ = createImageView(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createTextureSampler() {
     VkSamplerCreateInfo sampler_info = {};
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -894,7 +1026,13 @@ private:
     }
   }
 
-  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  VkImageView createImageView(VkImage image,
+    VkFormat format,
+    VkImageAspectFlags aspect_flags)
+  {
     VkImageViewCreateInfo view_info = {};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = image;
@@ -914,7 +1052,18 @@ private:
     return image_view;
   }
 
-  void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& image_memory) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  void createImage(uint32_t width,
+    uint32_t height,
+    VkFormat format,
+    VkImageTiling tiling,
+    VkImageUsageFlags usage,
+    VkMemoryPropertyFlags properties,
+    VkImage& image,
+    VkDeviceMemory& image_memory)
+  {
     VkImageCreateInfo image_info = {};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_info.imageType = VK_IMAGE_TYPE_2D;
@@ -949,7 +1098,14 @@ private:
     vkBindImageMemory(device_, image, image_memory, 0);
   }
 
-  void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  void transitionImageLayout(VkImage image,
+    VkFormat format,
+    VkImageLayout old_layout,
+    VkImageLayout new_layout)
+  {
     VkCommandBuffer command_buffer = beginSingleTimeCommands();
 
     VkImageMemoryBarrier barrier = {};
@@ -1004,7 +1160,14 @@ private:
     endSingleTimeCommands(command_buffer);
   }
 
-  void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  void copyBufferToImage(VkBuffer buffer,
+    VkImage image,
+    uint32_t width,
+    uint32_t height)
+  {
     VkCommandBuffer command_buffer = beginSingleTimeCommands();
 
     VkBufferImageCopy region = {};
@@ -1027,6 +1190,9 @@ private:
     endSingleTimeCommands(command_buffer);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void loadModel() {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -1066,6 +1232,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createVertexBuffer() {
     VkDeviceSize buffer_size = sizeof(vertices[0]) * vertices.size();
 
@@ -1086,6 +1255,9 @@ private:
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createIndexBuffer() {
     VkDeviceSize buffer_size = sizeof(indices[0]) * indices.size();
 
@@ -1106,11 +1278,17 @@ private:
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createUniformBuffer() {
     VkDeviceSize buffer_size = sizeof(UniformBufferObject);
     createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer_, uniform_buffer_memory_);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createDescriptorPool() {
     std::array<VkDescriptorPoolSize, 2> pool_sizes = {};
     pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1129,6 +1307,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createDescriptorSet() {
     VkDescriptorSetLayout layouts[] = { descriptor_set_layout_ };
     VkDescriptorSetAllocateInfo alloc_info = {};
@@ -1172,7 +1353,15 @@ private:
     vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
   }
 
-  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  void createBuffer(VkDeviceSize size,
+    VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties,
+    VkBuffer& buffer,
+    VkDeviceMemory& buffer_memory)
+  {
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = size;
@@ -1198,6 +1387,9 @@ private:
     vkBindBufferMemory(device_, buffer, buffer_memory, 0);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   VkCommandBuffer beginSingleTimeCommands() {
     VkCommandBufferAllocateInfo alloc_info = {};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1217,6 +1409,9 @@ private:
     return command_buffer;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void endSingleTimeCommands(VkCommandBuffer command_buffer) {
     vkEndCommandBuffer(command_buffer);
 
@@ -1231,7 +1426,13 @@ private:
     vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   }
 
-  void copyBuffer(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  void copyBuffer(VkBuffer src_buffer,
+    VkBuffer dst_buffer,
+    VkDeviceSize size)
+  {
     VkCommandBuffer command_buffer = beginSingleTimeCommands();
 
     VkBufferCopy copy_region = {};
@@ -1241,7 +1442,12 @@ private:
     endSingleTimeCommands(command_buffer);
   }
 
-  uint32_t findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) {
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  uint32_t findMemoryType(uint32_t type_filter,
+    VkMemoryPropertyFlags properties)
+  {
     VkPhysicalDeviceMemoryProperties mem_properties;
     vkGetPhysicalDeviceMemoryProperties(physical_device_, &mem_properties);
 
@@ -1254,6 +1460,9 @@ private:
     throw std::runtime_error("Failed to find suitable memory type!");
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createCommandBuffers() {
     command_buffers_.resize(swap_chain_framebuffers_.size());
 
@@ -1310,6 +1519,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void createSemaphores() {
     VkSemaphoreCreateInfo semaphore_info = {};
     semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -1321,6 +1533,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void updateUniformBuffer() {
     static auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -1339,6 +1554,9 @@ private:
     vkUnmapMemory(device_, uniform_buffer_memory_);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   void drawFrame() {
     uint32_t image_index;
     VkResult result = vkAcquireNextImageKHR(device_, swap_chain_, std::numeric_limits<uint64_t>::max(), image_available_semaphore_, VK_NULL_HANDLE, &image_index);
@@ -1395,6 +1613,9 @@ private:
     vkQueueWaitIdle(present_queue_);
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   VkShaderModule createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1409,27 +1630,40 @@ private:
     return shader_module;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: returns surface format values for the swap chain
+  //---------------------------------------------------------------------------
   VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& available_formats) {
+    // best case scenario is that the surface has no preferred format
     if (available_formats.size() == 1 && available_formats[0].format == VK_FORMAT_UNDEFINED) {
       return{ VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR };
     }
 
+    // iterate through the list to see if a preferred combination is available
     for (const auto& available_format : available_formats) {
       if (available_format.format == VK_FORMAT_B8G8R8A8_UNORM && available_format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
         return available_format;
       }
     }
 
+    // if no preferred combination is available then select the first format specified
     return available_formats[0];
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: returns the best available presentation mode for the swap chain
+  //---------------------------------------------------------------------------
   VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> available_present_modes) {
     VkPresentModeKHR best_mode = VK_PRESENT_MODE_FIFO_KHR;
 
     for (const auto& available_present_mode : available_present_modes) {
+      // looking for triple buffering if it's available
       if (available_present_mode == VK_PRESENT_MODE_MAILBOX_KHR) {
         return available_present_mode;
       }
+
+      // some drivers don't properly support VK_PRESENT_MODE_FIFO_KHR
+      // prefer VK_PRESENT_MODE_IMMEDIATE_KHR instead if above is not available
       else if (available_present_mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
         best_mode = available_present_mode;
       }
@@ -1438,6 +1672,9 @@ private:
     return best_mode;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: Setting the swap extent (resolution of the swap chain images)
+  //---------------------------------------------------------------------------
   VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
       return capabilities.currentExtent;
@@ -1458,6 +1695,9 @@ private:
     }
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: populates SwapChainSupportDetails struct
+  //---------------------------------------------------------------------------
   SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
     SwapChainSupportDetails details;
 
@@ -1482,12 +1722,19 @@ private:
     return details;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: Checking physical device contains proper queue and extension...
+  // ...support
+  //---------------------------------------------------------------------------
   bool isDeviceSuitable(VkPhysicalDevice device) {
     // checks if device can process commands we want to use
     QueueFamilyIndices indices = findQueueFamilies(device);
 
+    // important to only query for swap chain support after verifying the...
+    // ...extension is available
     bool extensions_supported = checkDeviceExtensionSupport(device);
 
+    // checking if the swap chain support is sufficient
     bool swap_chain_adequate = false;
     if (extensions_supported) {
       SwapChainSupportDetails swap_chain_support = querySwapChainSupport(device);
@@ -1497,18 +1744,25 @@ private:
     VkPhysicalDeviceFeatures supported_features;
     vkGetPhysicalDeviceFeatures(device, &supported_features);
 
+    // swap_chain_adequate not being used here??
     return indices.isComplete() && extensions_supported && supported_features.samplerAnisotropy;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
+    // enumerate the extensions
     uint32_t extension_count;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
 
     std::vector<VkExtensionProperties> available_extensions(extension_count);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.data());
 
+    // the set represents unconfirmed required extensions
     std::set<std::string> required_extensions(device_extensions.begin(), device_extensions.end());
 
+    // check if all required extensions are available
     for (const auto& extension : available_extensions) {
       required_extensions.erase(extension.extensionName);
     }
@@ -1516,7 +1770,10 @@ private:
     return required_extensions.empty();
   }
 
-  // function returns the indices of the queue families that satisfy certain desired properties
+  //---------------------------------------------------------------------------
+  // Purpose: function returns the indices of the queue families that... 
+  // ...satisfy certain desired properties
+  //---------------------------------------------------------------------------
   QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
 
@@ -1535,6 +1792,7 @@ private:
         indices.graphics_family = i;
       }
 
+      // checking queue families for presentation support
       VkBool32 present_support = false;
       vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface_, &present_support);
 
@@ -1552,6 +1810,9 @@ private:
     return indices;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   std::vector<const char*> getRequiredExtensions() {
     std::vector<const char*> extensions;
 
@@ -1574,6 +1835,9 @@ private:
     return extensions;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   bool checkValidationLayerSupport() {
     uint32_t layer_count;
     vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
@@ -1601,6 +1865,9 @@ private:
     return true;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
   static std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -1619,12 +1886,16 @@ private:
     return buffer;
   }
 
-  // VKAPI_ATTR and VKAPI_CALL ensure the function has the right signature for Vulkan to call it
+  //---------------------------------------------------------------------------
+  // VKAPI_ATTR and VKAPI_CALL ensure the function has the right signature...
+  // ...for Vulkan to call it
   // *first param: type of message
-  // *second param: specifies the type of object that is the subject of the message
+  // *second param: specifies the type of object that is the subject of...
+  // ...the message
   // *eighth param: contains the message itself
   // *ninth param: you can pass your own data to the callback
   // This function is used to test validation layers themselves
+  //---------------------------------------------------------------------------
   static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugReportFlagsEXT flags,
     VkDebugReportObjectTypeEXT obj_type,
     uint64_t obj,
@@ -1640,6 +1911,9 @@ private:
   }
 };
 
+//---------------------------------------------------------------------------
+// Purpose: 
+//---------------------------------------------------------------------------
 int main() {
   HelloTriangleApplication app;
 
