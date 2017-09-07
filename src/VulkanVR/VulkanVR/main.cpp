@@ -39,7 +39,22 @@ const std::string TEXTURE_PATH = "textures/chalet.jpg";
 //-----------------------------------------------------------------------------
 // Purpose: shows which validation layers are required
 //-----------------------------------------------------------------------------
+// "VK_LAYER_LUNARG_standard_validation"
+
+// "VK_LAYER_GOOGLE_threading",
+// "VK_LAYER_LUNARG_parameter_validation",
+// "VK_LAYER_LUNARG_object_tracker",
+// "VK_LAYER_LUNARG_core_validation",
+// "VK_LAYER_LUNARG_image" not available
+// "VK_LAYER_LUNARG_swapchain" not available
+
+// TODO: Learn how to install more validation layers
+
 const std::vector<const char*> validation_layers = {
+  "VK_LAYER_GOOGLE_threading",
+  "VK_LAYER_LUNARG_parameter_validation",
+  "VK_LAYER_LUNARG_object_tracker",
+  "VK_LAYER_LUNARG_core_validation",
   "VK_LAYER_LUNARG_standard_validation"
 };
 
@@ -252,7 +267,10 @@ private:
 
     // GLFW_NO_API tells GLFW not to create an OpenGL context
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); 
-
+    
+    //---------//
+    // VR code //
+    //---------//
     vr::EVRInitError e_error = vr::VRInitError_None;
     p_hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
     if (e_error != vr::VRInitError_None) {
@@ -266,6 +284,9 @@ private:
       vr::VR_Shutdown();
       throw std::runtime_error("Unable to get render model interface.");
     }
+    //----------------//
+    // End of VR code //
+    //----------------//
 
     // store a reference to the window when creating it
     window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
@@ -358,10 +379,16 @@ private:
   // Purpose: Destroying all the Vulkan objects explicitly created by us
   //---------------------------------------------------------------------------
   void cleanup() {
+    //---------//
+    // VR code //
+    //---------//
     if (p_hmd_) {
       vr::VR_Shutdown();
       p_hmd_ = NULL;
     }
+    //----------------//
+    // End of VR code //
+    //----------------//
 
     cleanupSwapChain(); // must be done before device
 
@@ -438,7 +465,7 @@ private:
     // optional data
     VkApplicationInfo app_info = {};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app_info.pApplicationName = "Hello Triangle";
+    app_info.pApplicationName = "VulkanVR";
     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -1871,6 +1898,45 @@ private:
     for (unsigned int i = 0; i < glfw_extension_count; i++) {
       extensions.push_back(glfw_extensions[i]);
     }
+
+    //---------//
+    // VR code //
+    //---------//
+    if (!vr::VRCompositor()) {
+      throw std::runtime_error("Couldn't get the VR compositor for extensions");
+    }
+
+    uint32_t nBufferSize = vr::VRCompositor()->GetVulkanInstanceExtensionsRequired(nullptr, 0);
+    if (nBufferSize > 0) {
+      // Allocate memory for the space separated list and query for it
+      char *pExtensionStr = new char[nBufferSize];
+      pExtensionStr[0] = 0;
+      vr::VRCompositor()->GetVulkanInstanceExtensionsRequired(pExtensionStr, nBufferSize);
+
+      // Break up the space separated list into entries on the CUtlStringList
+      std::string curExtStr;
+      uint32_t nIndex = 0;
+      while (pExtensionStr[nIndex] != 0 && (nIndex < nBufferSize)) {
+        if (pExtensionStr[nIndex] == ' ') {
+          const char* temp = strdup(curExtStr.c_str());
+          extensions.push_back(temp);
+          curExtStr.clear();
+        }
+        else {
+          curExtStr += pExtensionStr[nIndex];
+        }
+        nIndex++;
+      }
+      if (curExtStr.size() > 0) {
+        const char* temp = strdup(curExtStr.c_str());
+        extensions.push_back(temp);
+      }
+
+      delete[] pExtensionStr;
+    }
+    //----------------//
+    // End of VR code //
+    //----------------//
 
     // added to receive messages from the validation layers
     if (enable_validation_layers) {

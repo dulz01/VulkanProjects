@@ -78,20 +78,20 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
-    <LibraryPath>$(SolutionDir)..\..\3rdParty\openvr\lib\win32;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;$(LibraryPath)</LibraryPath>
+    <LibraryPath>$(SolutionDir)..\..\3rdParty\openvr\lib\win32;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.57.0\Lib32;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)..\..\bin\$(ProjectName)$(PlatformName)$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)..\..\temp\$(ProjectName)$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)..\..\3rdParty\openvr\headers;$(SolutionDir)..\..\3rdParty\tiny_obj_loader;$(SolutionDir)..\..\3rdParty\stb_image;$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.54.0\Include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)..\..\3rdParty\openvr\headers;$(SolutionDir)..\..\3rdParty\tiny_obj_loader;$(SolutionDir)..\..\3rdParty\stb_image;$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.57.0\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <LibraryPath>$(SolutionDir)..\..\3rdParty\openvr\lib\win32;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.54.0\Lib32;$(LibraryPath)</LibraryPath>
+    <LibraryPath>$(SolutionDir)..\..\3rdParty\openvr\lib\win32;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\lib-vc2015;C:\VulkanSDK\1.0.57.0\Lib32;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)..\..\bin\$(ProjectName)$(PlatformName)$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)..\..\temp\$(ProjectName)$(Configuration)\</IntDir>
-    <IncludePath>$(SolutionDir)..\..\3rdParty\openvr\headers;$(SolutionDir)..\..\3rdParty\tiny_obj_loader;$(SolutionDir)..\..\3rdParty\stb_image;$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.54.0\Include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)..\..\3rdParty\openvr\headers;$(SolutionDir)..\..\3rdParty\tiny_obj_loader;$(SolutionDir)..\..\3rdParty\stb_image;$(SolutionDir)..\..\3rdParty\glm;$(SolutionDir)..\..\3rdParty\glfw-3.2.1.bin.WIN32\include;C:\VulkanSDK\1.0.57.0\Include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
