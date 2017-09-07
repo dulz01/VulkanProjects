@@ -14,6 +14,8 @@
 #define TINYOBJLOADER_IMPLEMENTATION // includes the function bodies from tiny_obj_loader.h 
 #include <tiny_obj_loader.h>
 
+#include <openvr.h>
+
 // Reporting and propagating errors
 #include <stdexcept>
 #include <iostream>
@@ -27,8 +29,8 @@
 #include <set>
 #include <unordered_map>
 
-const int WIDTH = 800;
-const int HEIGHT = 600;
+const int WIDTH = 640;
+const int HEIGHT = 320;
 
 // path to model and texture
 const std::string MODEL_PATH = "models/chalet.obj";
@@ -238,6 +240,10 @@ private:
   VkSemaphore image_available_semaphore_;
   VkSemaphore render_finished_semaphore_;
 
+  // variables for VR
+  vr::IVRSystem *p_hmd_;
+  vr::IVRRenderModels *p_render_models_;
+
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
   //---------------------------------------------------------------------------
@@ -247,8 +253,22 @@ private:
     // GLFW_NO_API tells GLFW not to create an OpenGL context
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); 
 
+    vr::EVRInitError e_error = vr::VRInitError_None;
+    p_hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
+    if (e_error != vr::VRInitError_None) {
+      p_hmd_ = NULL;
+      throw std::runtime_error("VR_Init Failed");
+    }
+
+    p_render_models_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &e_error);
+    if (!p_render_models_) {
+      p_hmd_ = NULL;
+      vr::VR_Shutdown();
+      throw std::runtime_error("Unable to get render model interface.");
+    }
+
     // store a reference to the window when creating it
-    window_ = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+    window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
 
     glfwSetWindowUserPointer(window_, this);
     glfwSetWindowSizeCallback(window_, HelloTriangleApplication::onWindowResized);
@@ -338,6 +358,11 @@ private:
   // Purpose: Destroying all the Vulkan objects explicitly created by us
   //---------------------------------------------------------------------------
   void cleanup() {
+    if (p_hmd_) {
+      vr::VR_Shutdown();
+      p_hmd_ = NULL;
+    }
+
     cleanupSwapChain(); // must be done before device
 
     vkDestroySampler(device_, texture_sampler_, nullptr);
