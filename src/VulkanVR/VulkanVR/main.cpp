@@ -51,10 +51,6 @@ const std::string TEXTURE_PATH = "textures/chalet.jpg";
 // TODO: Learn how to install more validation layers
 
 const std::vector<const char*> validation_layers = {
-  "VK_LAYER_GOOGLE_threading",
-  "VK_LAYER_LUNARG_parameter_validation",
-  "VK_LAYER_LUNARG_object_tracker",
-  "VK_LAYER_LUNARG_core_validation",
   "VK_LAYER_LUNARG_standard_validation"
 };
 
@@ -255,9 +251,26 @@ private:
   VkSemaphore image_available_semaphore_;
   VkSemaphore render_finished_semaphore_;
 
-  // variables for VR
+  //------------------//
+  // variables for VR //
+  //------------------//
   vr::IVRSystem *p_hmd_;
   vr::IVRRenderModels *p_render_models_;
+
+  struct FramebufferDesc {
+    VkImage image;
+    VkImageLayout image_layout;
+    VkDeviceMemory device_memory;
+    VkImageView image_view;
+    VkImage depth_stencil_image;
+    VkImageLayout depth_stencil_image_layout;
+    VkDeviceMemory depth_stencil_device_memory;
+    VkImageView depth_stencil_image_view;
+    VkRenderPass render_pass;
+    VkFramebuffer frame_buffer;
+  };
+  FramebufferDesc left_eye_desc_;
+  FramebufferDesc right_eye_desc_;
 
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
@@ -271,6 +284,9 @@ private:
     //---------//
     // VR code //
     //---------//
+    memset(&left_eye_desc_, 0, sizeof(left_eye_desc_));
+    memset(&right_eye_desc_, 0, sizeof(right_eye_desc_));
+
     vr::EVRInitError e_error = vr::VRInitError_None;
     p_hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
     if (e_error != vr::VRInitError_None) {
@@ -385,6 +401,20 @@ private:
     if (p_hmd_) {
       vr::VR_Shutdown();
       p_hmd_ = NULL;
+    }
+
+    FramebufferDesc *pFramebufferDescs[2] = { &left_eye_desc_, &right_eye_desc_ };
+    for (int32_t i = 0; i < 2; i++) {
+      if (pFramebufferDescs[i]->image_view != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, pFramebufferDescs[i]->image_view, nullptr);
+        vkDestroyImage(device_, pFramebufferDescs[i]->image, nullptr);
+        vkFreeMemory(device_, pFramebufferDescs[i]->device_memory, nullptr);
+        vkDestroyImageView(device_, pFramebufferDescs[i]->depth_stencil_image_view, nullptr);
+        vkDestroyImage(device_, pFramebufferDescs[i]->depth_stencil_image, nullptr);
+        vkFreeMemory(device_, pFramebufferDescs[i]->depth_stencil_device_memory, nullptr);
+        vkDestroyRenderPass(device_, pFramebufferDescs[i]->render_pass, nullptr);
+        vkDestroyFramebuffer(device_, pFramebufferDescs[i]->frame_buffer, nullptr);
+      }
     }
     //----------------//
     // End of VR code //
