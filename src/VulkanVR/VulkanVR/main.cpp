@@ -193,12 +193,13 @@ public:
   void run() {
     initWindow();
     initVulkan();
+    initVRCompositor();
     mainLoop();
     cleanup();
   }
 
 private:
-  GLFWwindow* window_;
+  GLFWwindow* companion_window_;
 
   VkInstance instance_;
   VkDebugReportCallbackEXT callback_;
@@ -305,10 +306,10 @@ private:
     //----------------//
 
     // store a reference to the window when creating it
-    window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
+    companion_window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
 
-    glfwSetWindowUserPointer(window_, this);
-    glfwSetWindowSizeCallback(window_, HelloTriangleApplication::onWindowResized);
+    glfwSetWindowUserPointer(companion_window_, this);
+    glfwSetWindowSizeCallback(companion_window_, HelloTriangleApplication::onWindowResized);
   }
 
   //---------------------------------------------------------------------------
@@ -349,12 +350,23 @@ private:
   }
 
   //---------------------------------------------------------------------------
+  // Purpose: Initialize the VR custom compositor
+  //---------------------------------------------------------------------------
+  void initVRCompositor() {
+    vr::EVRInitError error = vr::VRInitError_None;
+    
+    if (!vr::VRCompositor()) {
+      throw std::runtime_error("Compositor initialization failed.");
+    }
+  }
+
+  //---------------------------------------------------------------------------
   // Purpose: 
   //---------------------------------------------------------------------------
   void mainLoop() {
     // keeping the application running until an error...
     // ... or the window is closed
-    while (!glfwWindowShouldClose(window_)) {
+    while (!glfwWindowShouldClose(companion_window_)) {
       glfwPollEvents();
 
       updateUniformBuffer();
@@ -452,7 +464,7 @@ private:
     vkDestroyInstance(instance_, nullptr); // must be destroyed right before the program exits
 
     // clean up resources and terminating GLFW
-    glfwDestroyWindow(window_);
+    glfwDestroyWindow(companion_window_);
     glfwTerminate();
   }
 
@@ -552,7 +564,7 @@ private:
   // Purpose: create a window surface using GLFW's function
   //---------------------------------------------------------------------------
   void createSurface() {
-    if (glfwCreateWindowSurface(instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
+    if (glfwCreateWindowSurface(instance_, companion_window_, nullptr, &surface_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create window surface!");
     }
   }
@@ -1784,7 +1796,7 @@ private:
     }
     else {
       int width, height;
-      glfwGetWindowSize(window_, &width, &height);
+      glfwGetWindowSize(companion_window_, &width, &height);
 
       VkExtent2D actual_extent = {
         static_cast<uint32_t>(width),
@@ -1920,10 +1932,7 @@ private:
     std::vector<const char*> extensions;
 
     unsigned int glfw_extension_count = 0;
-    const char** glfw_extensions;
-
-    // always required
-    glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
+    const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
 
     for (unsigned int i = 0; i < glfw_extension_count; i++) {
       extensions.push_back(glfw_extensions[i]);
