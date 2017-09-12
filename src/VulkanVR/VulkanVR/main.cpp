@@ -281,6 +281,12 @@ private:
   glm::mat4 mat4_eye_pos_left_;
   glm::mat4 mat4_eye_pos_right_;
 
+  float near_clip_;
+  float far_clip_;
+
+  uint32_t render_width_;
+  uint32_t render_height_;
+
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
   //---------------------------------------------------------------------------
@@ -309,6 +315,10 @@ private:
       vr::VR_Shutdown();
       throw std::runtime_error("Unable to get render model interface.");
     }
+    
+    near_clip_ = 0.1f;
+    far_clip_ = 30.0f;
+
     //----------------//
     // End of VR code //
     //----------------//
@@ -1420,7 +1430,7 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: buffer for the ubo data
+  // Purpose: [VR] buffer for the ubo data
   //---------------------------------------------------------------------------
   void createPerEyeUniformBuffer() {
     for (uint32_t eye = 0; eye < 2; eye++) {
@@ -1445,8 +1455,53 @@ private:
     }
   }
 
-  void setCameras() {
+  //---------------------------------------------------------------------------
+  // Purpose: [VR] Set eye and projection cameras
+  //---------------------------------------------------------------------------
+  void setupCameras() {
+    mat4_proj_left_ = getHMDMatrixProjectionEye(vr::Eye_Left);
+    mat4_proj_right_ = getHMDMatrixProjectionEye(vr::Eye_Right);
+  }
 
+  //---------------------------------------------------------------------------
+  // Purpose: [VR] Get the projection matrix for the HMD eye
+  //---------------------------------------------------------------------------
+  glm::mat4 getHMDMatrixProjectionEye(vr::Hmd_Eye eye) {
+    if (!p_hmd_) { return glm::mat4(); }
+    vr::HmdMatrix44_t mat = p_hmd_->GetProjectionMatrix(eye, near_clip_, far_clip_);
+
+    return glm::mat4(
+      mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
+      mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1],
+      mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2],
+      mat.m[0][3], mat.m[1][3], mat.m[2][3], mat.m[3][3]
+    );
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: [VR] Get the HMD eye position
+  //---------------------------------------------------------------------------
+  glm::mat4 getHMDMatrixPoseEye(vr::Hmd_Eye eye) {
+    if (!p_hmd_) { return glm::mat4(); }
+    vr::HmdMatrix34_t mat_eye_right = p_hmd_->GetEyeToHeadTransform(eye);
+    glm::mat4 matrix_obj(
+      mat_eye_right.m[0][0], mat_eye_right.m[1][0], mat_eye_right.m[2][0], 0.0,
+      mat_eye_right.m[0][1], mat_eye_right.m[1][1], mat_eye_right.m[2][1], 0.0,
+      mat_eye_right.m[0][2], mat_eye_right.m[1][2], mat_eye_right.m[2][2], 0.0,
+      mat_eye_right.m[0][3], mat_eye_right.m[1][3], mat_eye_right.m[2][3], 1.0f
+    );
+    return glm::inverse(matrix_obj);
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: [VR] Set up render targets
+  //---------------------------------------------------------------------------
+  void setupStereoRenderTargets() {
+    if(!p_hmd_) {
+      throw std::runtime_error("Failed to set up render targets");
+    }
+
+    p_hmd_->GetRecommendedRenderTargetSize(&render_width_, &render_height_);
   }
 
   //---------------------------------------------------------------------------
