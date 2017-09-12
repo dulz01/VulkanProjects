@@ -273,6 +273,14 @@ private:
   FramebufferDesc left_eye_desc_;
   FramebufferDesc right_eye_desc_;
 
+  VkBuffer scene_uniform_buffer_[2];
+  VkDeviceMemory scene_uniform_buffer_memory_[2];
+  
+  glm::mat4 mat4_proj_left_;
+  glm::mat4 mat4_proj_right_;
+  glm::mat4 mat4_eye_pos_left_;
+  glm::mat4 mat4_eye_pos_right_;
+
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
   //---------------------------------------------------------------------------
@@ -343,6 +351,8 @@ private:
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffer();
+    //createPerEyeUniformBuffer();
+
     createDescriptorPool();
     createDescriptorSet();
     createCommandBuffers();
@@ -426,6 +436,18 @@ private:
         vkFreeMemory(device_, pFramebufferDescs[i]->depth_stencil_device_memory, nullptr);
         vkDestroyRenderPass(device_, pFramebufferDescs[i]->render_pass, nullptr);
         vkDestroyFramebuffer(device_, pFramebufferDescs[i]->frame_buffer, nullptr);
+      }
+    }
+
+    for (uint32_t eye = 0; eye < 2; eye++) {
+      if (scene_uniform_buffer_[eye] != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, scene_uniform_buffer_[eye], nullptr);
+        scene_uniform_buffer_[eye] = VK_NULL_HANDLE;
+      }
+
+      if (scene_uniform_buffer_memory_ != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, scene_uniform_buffer_memory_[eye], nullptr);
+        scene_uniform_buffer_memory_[eye] = VK_NULL_HANDLE;
       }
     }
     //----------------//
@@ -1395,6 +1417,36 @@ private:
   void createUniformBuffer() {
     VkDeviceSize buffer_size = sizeof(UniformBufferObject);
     createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer_, uniform_buffer_memory_);
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: buffer for the ubo data
+  //---------------------------------------------------------------------------
+  void createPerEyeUniformBuffer() {
+    for (uint32_t eye = 0; eye < 2; eye++) {
+      VkBufferCreateInfo buffer_create_info = {};
+      buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      buffer_create_info.size = sizeof(glm::mat4);
+      vkCreateBuffer(device_, &buffer_create_info, nullptr, &scene_uniform_buffer_[eye]);
+
+      VkMemoryRequirements memory_requirements = {};
+      vkGetBufferMemoryRequirements(device_, scene_uniform_buffer_[eye], &memory_requirements);
+      
+      VkMemoryAllocateInfo alloc_info = {};
+      findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+      alloc_info.allocationSize = memory_requirements.size;
+
+      vkAllocateMemory(device_, &alloc_info, nullptr, &scene_uniform_buffer_memory_[eye]);
+      vkBindBufferMemory(device_, scene_uniform_buffer_[eye], scene_uniform_buffer_memory_[eye], 0);
+
+      void *data;
+
+      vkMapMemory(device_, scene_uniform_buffer_memory_[eye], 0, VK_WHOLE_SIZE, 0, &data);
+    }
+  }
+
+  void setCameras() {
+
   }
 
   //---------------------------------------------------------------------------
