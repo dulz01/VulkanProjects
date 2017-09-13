@@ -361,23 +361,11 @@ private:
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffer();
-    //createPerEyeUniformBuffer();
 
     createDescriptorPool();
     createDescriptorSet();
     createCommandBuffers();
     createSemaphores();
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: Initialize the VR custom compositor
-  //---------------------------------------------------------------------------
-  void initVRCompositor() {
-    vr::EVRInitError error = vr::VRInitError_None;
-    
-    if (!vr::VRCompositor()) {
-      throw std::runtime_error("Compositor initialization failed.");
-    }
   }
 
   //---------------------------------------------------------------------------
@@ -1430,6 +1418,17 @@ private:
   }
 
   //---------------------------------------------------------------------------
+  // Purpose: [VR] Initialize the VR custom compositor
+  //---------------------------------------------------------------------------
+  void initVRCompositor() {
+    vr::EVRInitError error = vr::VRInitError_None;
+
+    if (!vr::VRCompositor()) {
+      throw std::runtime_error("Compositor initialization failed.");
+    }
+  }
+
+  //---------------------------------------------------------------------------
   // Purpose: [VR] buffer for the ubo data
   //---------------------------------------------------------------------------
   void createPerEyeUniformBuffer() {
@@ -1502,6 +1501,146 @@ private:
     }
 
     p_hmd_->GetRecommendedRenderTargetSize(&render_width_, &render_height_);
+    createFrameBufferDesc(render_width_, render_height_, left_eye_desc_);
+    createFrameBufferDesc(render_width_, render_height_, right_eye_desc_);
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: [VR] Create Frame Buffer Descriptions for HMD Eyes
+  //---------------------------------------------------------------------------
+  void createFrameBufferDesc(int nWidth, int nHeight, FramebufferDesc &framebufferDesc) {
+    //---------------------------//
+    //    Create color target    //
+    //---------------------------//
+    VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.extent.width = nWidth;
+    imageCreateInfo.extent.height = nHeight;
+    imageCreateInfo.extent.depth = 1;
+    imageCreateInfo.mipLevels = 1;
+    imageCreateInfo.arrayLayers = 1;
+    imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCreateInfo.samples = VK_SAMPLE_COUNT_4_BIT;
+    imageCreateInfo.usage = (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    imageCreateInfo.flags = 0;
+
+    vkCreateImage(device_, &imageCreateInfo, nullptr, &framebufferDesc.image);
+
+    VkMemoryRequirements memory_requirements = {};
+    vkGetImageMemoryRequirements(device_, framebufferDesc.image, &memory_requirements);
+
+    VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    memoryAllocateInfo.allocationSize = memory_requirements.size;
+    findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    vkAllocateMemory(device_, &memoryAllocateInfo, nullptr, &framebufferDesc.device_memory);
+
+    vkBindImageMemory(device_, framebufferDesc.image, framebufferDesc.device_memory, 0);
+
+    VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    imageViewCreateInfo.flags = 0;
+    imageViewCreateInfo.image = framebufferDesc.image;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = imageCreateInfo.format;
+    imageViewCreateInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    imageViewCreateInfo.subresourceRange.levelCount = 1;
+    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewCreateInfo.subresourceRange.layerCount = 1;
+    
+    vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &framebufferDesc.image_view);
+
+    //-----------------------------------//
+    //    Create depth/stencil target    //
+    //-----------------------------------//
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.format = VK_FORMAT_D32_SFLOAT;
+    imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    
+    vkCreateImage(device_, &imageCreateInfo, nullptr, &framebufferDesc.depth_stencil_image);
+
+    vkGetImageMemoryRequirements(device_, framebufferDesc.depth_stencil_image, &memory_requirements);
+
+    memoryAllocateInfo.allocationSize = memory_requirements.size;
+    findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    vkAllocateMemory(device_, &memoryAllocateInfo, nullptr, &framebufferDesc.depth_stencil_device_memory);
+
+    vkBindImageMemory(device_, framebufferDesc.depth_stencil_image, framebufferDesc.depth_stencil_device_memory, 0);
+
+    imageViewCreateInfo.image = framebufferDesc.depth_stencil_image;
+    imageViewCreateInfo.format = imageCreateInfo.format;
+    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &framebufferDesc.depth_stencil_image_view);
+
+    // Create a renderpass
+    uint32_t nTotalAttachments = 2;
+    VkAttachmentDescription attachmentDescs[2];
+    VkAttachmentReference attachmentReferences[2];
+    attachmentReferences[0].attachment = 0;
+    attachmentReferences[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachmentReferences[1].attachment = 1;
+    attachmentReferences[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    attachmentDescs[0].format = VK_FORMAT_R8G8B8A8_SRGB;
+    attachmentDescs[0].samples = imageCreateInfo.samples;
+    attachmentDescs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentDescs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentDescs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachmentDescs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachmentDescs[0].flags = 0;
+
+    attachmentDescs[1].format = VK_FORMAT_D32_SFLOAT;
+    attachmentDescs[1].samples = imageCreateInfo.samples;
+    attachmentDescs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentDescs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentDescs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachmentDescs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachmentDescs[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachmentDescs[1].flags = 0;
+
+    VkSubpassDescription subPassCreateInfo = {};
+    subPassCreateInfo.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subPassCreateInfo.flags = 0;
+    subPassCreateInfo.inputAttachmentCount = 0;
+    subPassCreateInfo.pInputAttachments = NULL;
+    subPassCreateInfo.colorAttachmentCount = 1;
+    subPassCreateInfo.pColorAttachments = &attachmentReferences[0];
+    subPassCreateInfo.pResolveAttachments = NULL;
+    subPassCreateInfo.pDepthStencilAttachment = &attachmentReferences[1];
+    subPassCreateInfo.preserveAttachmentCount = 0;
+    subPassCreateInfo.pPreserveAttachments = NULL;
+
+    VkRenderPassCreateInfo renderPassCreateInfo = {};
+    renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassCreateInfo.flags = 0;
+    renderPassCreateInfo.attachmentCount = 2;
+    renderPassCreateInfo.pAttachments = &attachmentDescs[0];
+    renderPassCreateInfo.subpassCount = 1;
+    renderPassCreateInfo.pSubpasses = &subPassCreateInfo;
+    renderPassCreateInfo.dependencyCount = 0;
+    renderPassCreateInfo.pDependencies = NULL;
+
+    vkCreateRenderPass(device_, &renderPassCreateInfo, NULL, &framebufferDesc.render_pass);
+
+    // Create the framebuffer
+    VkImageView attachments[2] = { framebufferDesc.image_view, framebufferDesc.depth_stencil_image_view };
+    VkFramebufferCreateInfo framebufferCreateInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
+    framebufferCreateInfo.renderPass = framebufferDesc.render_pass;
+    framebufferCreateInfo.attachmentCount = 2;
+    framebufferCreateInfo.pAttachments = &attachments[0];
+    framebufferCreateInfo.width = nWidth;
+    framebufferCreateInfo.height = nHeight;
+    framebufferCreateInfo.layers = 1;
+    vkCreateFramebuffer(device_, &framebufferCreateInfo, NULL, &framebufferDesc.frame_buffer);
+
+    framebufferDesc.image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+    framebufferDesc.depth_stencil_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
   }
 
   //---------------------------------------------------------------------------
@@ -2064,7 +2203,7 @@ private:
       uint32_t nIndex = 0;
       while (pExtensionStr[nIndex] != 0 && (nIndex < nBufferSize)) {
         if (pExtensionStr[nIndex] == ' ') {
-          const char* temp = strdup(curExtStr.c_str());
+          const char* temp = _strdup(curExtStr.c_str());
           extensions.push_back(temp);
           curExtStr.clear();
         }
@@ -2074,7 +2213,7 @@ private:
         nIndex++;
       }
       if (curExtStr.size() > 0) {
-        const char* temp = strdup(curExtStr.c_str());
+        const char* temp = _strdup(curExtStr.c_str());
         extensions.push_back(temp);
       }
 
