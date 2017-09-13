@@ -206,6 +206,10 @@ private:
   VkSurfaceKHR surface_;
     
   VkPhysicalDevice physical_device_ = VK_NULL_HANDLE; // implicitly destroyed with VkInstance
+  VkPhysicalDeviceProperties physical_device_properties;
+  VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+  VkPhysicalDeviceFeatures physical_device_features;
+
   VkDevice device_;
 
   VkQueue graphics_queue_;
@@ -251,6 +255,7 @@ private:
 
   VkSemaphore image_available_semaphore_;
   VkSemaphore render_finished_semaphore_;
+  std::vector<VkSemaphore> swapchain_semaphores_;
 
   //------------------//
   // variables for VR //
@@ -309,12 +314,12 @@ private:
       throw std::runtime_error("VR_Init Failed");
     }
 
-    p_render_models_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &e_error);
-    if (!p_render_models_) {
-      p_hmd_ = NULL;
-      vr::VR_Shutdown();
-      throw std::runtime_error("Unable to get render model interface.");
-    }
+    //p_render_models_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &e_error);
+    //if (!p_render_models_) {
+    //  p_hmd_ = NULL;
+    //  vr::VR_Shutdown();
+    //  throw std::runtime_error("Unable to get render model interface.");
+    //}
     
     near_clip_ = 0.1f;
     far_clip_ = 30.0f;
@@ -343,7 +348,7 @@ private:
     createCommandPool();
 
     createDepthResources();
-    createFramebuffers();
+    //createFramebuffers();
 
     setupTextures();
     loadModel();
@@ -358,7 +363,7 @@ private:
     createDescriptorSet();
 
     createCommandBuffers();
-    createSemaphores();
+    //createSemaphores();
   }
 
   //---------------------------------------------------------------------------
@@ -597,6 +602,11 @@ private:
       throw std::runtime_error("Failed to find a suitable GPU!");
     }
 
+    vkGetPhysicalDeviceProperties(physical_device_, &physical_device_properties);
+    vkGetPhysicalDeviceMemoryProperties(physical_device_, &physical_device_memory_properties);
+    vkGetPhysicalDeviceFeatures(physical_device_, &physical_device_features);
+
+    // Logical device creation
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
 
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
@@ -715,69 +725,73 @@ private:
     swap_chain_image_format_ = surface_format.format;
     swap_chain_extent_ = extent;
 
+    // Create renderpass
+    uint32_t total_attachments = 1;
+    VkAttachmentReference attachment_ref = {};
+    attachment_ref.attachment = 0; // attachment index
+    attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // type of layout for the attachment
+
+    VkAttachmentDescription attachment_desc = {};
+    attachment_desc.format = swap_chain_image_format_; // should match the swap chain images
+    attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clearing the framebuffer before drawing a new frame
+    attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // rendered contents will be stored in memory and can be read later
+    attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; 
+    attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_desc.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // specifies the layout before the render pass begins
+    attachment_desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // specifies the layout to automatically transition to when the render pass finishes
+    attachment_desc.flags = 0;
+    
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // have to say explicitly that its a graphics subpass instead of a compute subpass
+    subpass.flags = 0;
+    subpass.inputAttachmentCount = 0;
+    subpass.pInputAttachments = NULL;
+    subpass.colorAttachmentCount = 1; // the index for the fragment shader
+    subpass.pColorAttachments = &attachment_ref;
+    subpass.pResolveAttachments = NULL;
+    subpass.pDepthStencilAttachment = NULL;
+    subpass.preserveAttachmentCount = 0;
+    subpass.pPreserveAttachments = NULL;
+
+    // filling in the render pass struct with the attachments and subpass structs
+    VkRenderPassCreateInfo render_pass_info = {};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_info.flags = 0;
+    render_pass_info.attachmentCount = 1;
+    render_pass_info.pAttachments = &attachment_desc;
+    render_pass_info.subpassCount = 1;
+    render_pass_info.pSubpasses = &subpass;
+    render_pass_info.dependencyCount = 1;
+    render_pass_info.pDependencies = NULL;
+
+    if (vkCreateRenderPass(device_, &render_pass_info, nullptr, &render_pass_) != VK_SUCCESS) {
+      throw std::runtime_error("Failed to create render pass!");
+    }
+
     // Create image views
     swap_chain_image_views_.resize(swap_chain_images_.size());
 
     for (uint32_t i = 0; i < swap_chain_images_.size(); i++) {
       swap_chain_image_views_[i] = createImageView(swap_chain_images_[i], swap_chain_image_format_, VK_IMAGE_ASPECT_COLOR_BIT);
-    }
 
-    // Create renderpass
-    VkAttachmentDescription colour_attachment = {};
-    colour_attachment.format = swap_chain_image_format_; // should match the swap chain images
-    colour_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colour_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clearing the framebuffer before drawing a new frame
-    colour_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // rendered contents will be stored in memory and can be read later
-    colour_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; 
-    colour_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colour_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // specifies the layout before the render pass begins
-    colour_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // specifies the layout to automatically transition to when the render pass finishes
+      VkImageView attachments[1] = { swap_chain_image_views_[i] };
+      VkFramebufferCreateInfo framebuffer_create_info = {};
+      framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+      framebuffer_create_info.attachmentCount = 1;
+      framebuffer_create_info.pAttachments = &attachments[0];
+      framebuffer_create_info.width = WIDTH;
+      framebuffer_create_info.height = HEIGHT;
+      framebuffer_create_info.layers = 1;
+      if (vkCreateFramebuffer(device_, &framebuffer_create_info, nullptr, &swap_chain_framebuffers_[i]) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create framebuffer!");
+      }
 
-    VkAttachmentDescription depth_attachment = {};
-    depth_attachment.format = findDepthFormat();
-    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference colour_attachment_ref = {};
-    colour_attachment_ref.attachment = 0; // attachment index
-    colour_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // type of layout for the attachment
-
-    VkAttachmentReference depth_attachment_ref = {};
-    depth_attachment_ref.attachment = 1;
-    depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // have to say explicitly that its a graphics subpass instead of a compute subpass
-    subpass.colorAttachmentCount = 1; // the index for the fragment shader
-    subpass.pColorAttachments = &colour_attachment_ref;
-    subpass.pDepthStencilAttachment = &depth_attachment_ref;
-
-    VkSubpassDependency dependency = {};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    // filling in the render pass struct with the attachments and subpass structs
-    std::array<VkAttachmentDescription, 2> attachments = { colour_attachment, depth_attachment };
-    VkRenderPassCreateInfo render_pass_info = {};
-    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_info.attachmentCount = static_cast<uint32_t>(attachments.size());
-    render_pass_info.pAttachments = attachments.data();
-    render_pass_info.subpassCount = 1;
-    render_pass_info.pSubpasses = &subpass;
-    render_pass_info.dependencyCount = 1;
-    render_pass_info.pDependencies = &dependency;
-
-    if (vkCreateRenderPass(device_, &render_pass_info, nullptr, &render_pass_) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create render pass!");
+      VkSemaphoreCreateInfo semaphore_create_info = {};
+      semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+      VkSemaphore semaphore = VK_NULL_HANDLE;
+      vkCreateSemaphore(device_, &semaphore_create_info, nullptr, &semaphore);
+      swapchain_semaphores_.push_back(semaphore);
     }
   }
 
@@ -1657,18 +1671,16 @@ private:
   VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) {
     VkImageViewCreateInfo view_info = {};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_info.flags = 0;
     view_info.image = image;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D; // allows you to treat images as 1D, 2D, 3D textures or cube maps
     view_info.format = format;
-
-    // these fields allow you to describe what the image's purpose is and which part is accessed
-    // if a stereoscopic 3D application is being made, you can access different layers to make views for the left and right eye
+    view_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
     view_info.subresourceRange.aspectMask = aspect_flags;
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.baseArrayLayer = 0;
     view_info.subresourceRange.layerCount = 1;
-
     VkImageView image_view;
     if (vkCreateImageView(device_, &view_info, nullptr, &image_view) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create texture image view!");
