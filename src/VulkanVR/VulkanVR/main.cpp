@@ -341,15 +341,22 @@ private:
     createDescriptorSetLayout();
     createGraphicsPipeline();
     createCommandPool();
+
     createDepthResources();
     createFramebuffers();
-    createTextureMap();
+
+    setupTextures();
     loadModel();
+
+    setupCameras();
+
     createVertexBuffer();
     createIndexBuffer();
     createUniformBuffer();
+
     createDescriptorPool();
     createDescriptorSet();
+
     createCommandBuffers();
     createSemaphores();
   }
@@ -569,7 +576,6 @@ private:
 
     uint32_t device_count = 0;
     vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
-
     // no point going further if there's no devices with Vulkan support
     if (device_count == 0) {
       throw std::runtime_error("Failed to find GPUs with Vulkan support!");
@@ -613,20 +619,14 @@ private:
     
     // specifying what set of device features we'll be using
     VkPhysicalDeviceFeatures device_features = {};
-    device_features.samplerAnisotropy = VK_TRUE;
+    vkGetPhysicalDeviceFeatures(physical_device_, &device_features);
 
     // creating the logical device
     VkDeviceCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-
-    // pointers to the queue create info
     create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
     create_info.pQueueCreateInfos = queue_create_infos.data();
-
-    // pointer to the device feature
     create_info.pEnabledFeatures = &device_features;
-
-    // extensions and validation layers
     create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
     create_info.ppEnabledExtensionNames = device_extensions.data();
 
@@ -672,17 +672,12 @@ private:
     VkSwapchainCreateInfoKHR create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     create_info.surface = surface_;
-
-    // the acquired information above is input here
     create_info.minImageCount = image_count;
     create_info.imageFormat = surface_format.format;
     create_info.imageColorSpace = surface_format.colorSpace;
     create_info.imageExtent = extent;
     create_info.imageArrayLayers = 1; // always set to 1 unless developing stereoscopic 3D application
-    
-    // this settings means will render directly to the image
-    // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; 
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;  // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
     
     // specifying how to handle swap chain images across multiple queue families
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
@@ -731,16 +726,10 @@ private:
     VkAttachmentDescription colour_attachment = {};
     colour_attachment.format = swap_chain_image_format_; // should match the swap chain images
     colour_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-
-    // decides what to do with the data in the attachment before rendering
     colour_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clearing the framebuffer before drawing a new frame
     colour_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // rendered contents will be stored in memory and can be read later
-
-    // just like the above two parameters but for stencils
     colour_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; 
     colour_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-
-    // setting the layout of pixels for the image
     colour_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // specifies the layout before the render pass begins
     colour_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // specifies the layout to automatically transition to when the render pass finishes
 
@@ -1028,7 +1017,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: create an image for textures
   //---------------------------------------------------------------------------
-  void createTextureMap() {
+  void setupTextures() {
     // loading an image
     int tex_width, tex_height, tex_channels;
     stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
@@ -1992,7 +1981,6 @@ private:
 
     uint32_t format_count;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface_, &format_count, nullptr);
-
     if (format_count != 0) {
       details.formats.resize(format_count);
       vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface_, &format_count, details.formats.data());
@@ -2000,7 +1988,6 @@ private:
 
     uint32_t present_mode_count;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface_, &present_mode_count, nullptr);
-
     if (present_mode_count != 0) {
       details.present_modes.resize(present_mode_count);
       vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface_, &present_mode_count, details.present_modes.data());
