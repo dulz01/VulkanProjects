@@ -336,7 +336,6 @@ private:
   void initVulkan() {
     // setup
     createInstance();
-    setupDebugCallback();
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
@@ -348,9 +347,7 @@ private:
     createCommandPool();
     createDepthResources();
     createFramebuffers();
-
     createTextureMap();
-
     loadModel();
     createVertexBuffer();
     createIndexBuffer();
@@ -551,24 +548,19 @@ private:
     if (vkCreateInstance(&create_info, nullptr, &instance_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create instance!");
     }
-  }
 
-  //---------------------------------------------------------------------------
-  // Purpose: telling Vulkan about the callback function
-  //---------------------------------------------------------------------------
-  void setupDebugCallback() {
     if (!enable_validation_layers) { return; }
     
-    VkDebugReportCallbackCreateInfoEXT create_info = {};
-    create_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+    VkDebugReportCallbackCreateInfoEXT debug_create_info = {};
+    debug_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
 
     // allows you to filter what type of messages you would like to receive
-    create_info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+    debug_create_info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
 
     // specifies the pointer to the callback function
-    create_info.pfnCallback = debugCallback;
+    debug_create_info.pfnCallback = debugCallback;
 
-    if (CreateDebugReportCallbackEXT(instance_, &create_info, nullptr, &callback_) != VK_SUCCESS) {
+    if (CreateDebugReportCallbackEXT(instance_, &debug_create_info, nullptr, &callback_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to set up debug callback!");
     }
   }
