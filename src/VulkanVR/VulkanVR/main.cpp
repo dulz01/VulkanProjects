@@ -334,13 +334,10 @@ private:
   // Purpose: calls all the functions required to initialise Vulkan
   //---------------------------------------------------------------------------
   void initVulkan() {
-    // setup
     InitVulkanInstance();
     InitVulkanDevice();
+    InitVulkanSwapchain();
 
-    createSwapChain();
-    createImageViews();
-    createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
     createCommandPool();
@@ -495,9 +492,7 @@ private:
 
     cleanupSwapChain();
 
-    createSwapChain();
-    createImageViews();
-    createRenderPass();
+    InitVulkanSwapchain();
     createGraphicsPipeline();
     createDepthResources();
     createFramebuffers();
@@ -656,7 +651,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: create the swap chain
   //---------------------------------------------------------------------------
-  void createSwapChain() {
+  void InitVulkanSwapchain() {
     SwapChainSupportDetails swap_chain_support = querySwapChainSupport(physical_device_);
 
     // getting the three required pieces of information from helper functions
@@ -724,25 +719,15 @@ private:
     // storing format and extent to member variables for future use.
     swap_chain_image_format_ = surface_format.format;
     swap_chain_extent_ = extent;
-  }
 
-  //---------------------------------------------------------------------------
-  // Purpose: creates a basic image view for every image in the swap chain
-  //---------------------------------------------------------------------------
-  void createImageViews() {
+    // Create image views
     swap_chain_image_views_.resize(swap_chain_images_.size());
 
     for (uint32_t i = 0; i < swap_chain_images_.size(); i++) {
       swap_chain_image_views_[i] = createImageView(swap_chain_images_[i], swap_chain_image_format_, VK_IMAGE_ASPECT_COLOR_BIT);
     }
-  }
 
-  //---------------------------------------------------------------------------
-  // Purpose: specify the number of colour and depth buffers, number of...
-  // ...samples for each of the buffers and how to handle the contents...
-  // ...wrapped in a renderpass object
-  //---------------------------------------------------------------------------
-  void createRenderPass() {
+    // Create renderpass
     VkAttachmentDescription colour_attachment = {};
     colour_attachment.format = swap_chain_image_format_; // should match the swap chain images
     colour_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
