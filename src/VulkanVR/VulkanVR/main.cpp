@@ -335,10 +335,9 @@ private:
   //---------------------------------------------------------------------------
   void initVulkan() {
     // setup
-    createInstance();
-    createSurface();
-    pickPhysicalDevice();
-    createLogicalDevice();
+    InitVulkanInstance();
+    InitVulkanDevice();
+
     createSwapChain();
     createImageViews();
     createRenderPass();
@@ -508,7 +507,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: initializing Vulkan with an instance
   //---------------------------------------------------------------------------
-  void createInstance() {
+  void InitVulkanInstance() {
     // checking if validation layers are available when enabled
     if (enable_validation_layers && !checkValidationLayerSupport()) {
       throw std::runtime_error("Validation layers requested, but not available!");
@@ -566,18 +565,13 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: create a window surface using GLFW's function
+  // Purpose: find a graphics card and check if it supports any Vulkan features
   //---------------------------------------------------------------------------
-  void createSurface() {
+  void InitVulkanDevice() {
     if (glfwCreateWindowSurface(instance_, companion_window_, nullptr, &surface_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create window surface!");
     }
-  }
 
-  //---------------------------------------------------------------------------
-  // Purpose: find a graphics card and check if it supports any Vulkan features
-  //---------------------------------------------------------------------------
-  void pickPhysicalDevice() {
     uint32_t device_count = 0;
     vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
 
@@ -601,12 +595,7 @@ private:
     if (physical_device_ == VK_NULL_HANDLE) {
       throw std::runtime_error("Failed to find a suitable GPU!");
     }
-  }
 
-  //---------------------------------------------------------------------------
-  // Purpose: sets up a logical device to interface with the physical device
-  //---------------------------------------------------------------------------
-  void createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
 
     std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
