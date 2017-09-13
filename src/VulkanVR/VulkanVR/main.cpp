@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <iostream>
 
+#include <deque>
 #include <cstring> // for strcmp function
 #include <algorithm> // for max and min functions
 #include <fstream> // for file reading
@@ -251,7 +252,7 @@ private:
   VkDescriptorPool descriptor_pool_;
   VkDescriptorSet descriptor_set_;
 
-  std::vector<VkCommandBuffer> command_buffers_;
+  //std::vector<VkCommandBuffer> command_buffers_;
 
   VkSemaphore image_available_semaphore_;
   VkSemaphore render_finished_semaphore_;
@@ -291,6 +292,13 @@ private:
 
   uint32_t render_width_;
   uint32_t render_height_;
+
+  struct VulkanCommandBuffer_t {
+    VkCommandBuffer command_buffer;
+    VkFence fence;
+  };
+  std::deque<VulkanCommandBuffer_t> command_buffers_;
+  VulkanCommandBuffer_t current_command_buffer;
 
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
@@ -343,26 +351,29 @@ private:
     InitVulkanDevice();
     InitVulkanSwapchain();
 
-    createDescriptorSetLayout();
-    createGraphicsPipeline();
     createCommandPool();
 
-    createDepthResources();
+
+
+    //createDescriptorSetLayout();
+    //createGraphicsPipeline();
+
+    //createDepthResources();
     //createFramebuffers();
 
-    setupTextures();
-    loadModel();
+    //setupTextures();
+    //loadModel();
 
-    setupCameras();
+    //setupCameras();
 
-    createVertexBuffer();
-    createIndexBuffer();
-    createUniformBuffer();
+    //createVertexBuffer();
+    //createIndexBuffer();
+    //createUniformBuffer();
 
-    createDescriptorPool();
-    createDescriptorSet();
+    //createDescriptorPool();
+    //createDescriptorSet();
 
-    createCommandBuffers();
+    //createCommandBuffers();
     //createSemaphores();
   }
 
@@ -396,7 +407,10 @@ private:
     }
 
     // free up the command buffers so we can reuse them
-    vkFreeCommandBuffers(device_, command_pool_, static_cast<uint32_t>(command_buffers_.size()), command_buffers_.data());
+    for (std::deque<VulkanCommandBuffer_t>::iterator i = command_buffers_.begin(); i != command_buffers_.end(); i++) {
+      vkFreeCommandBuffers(device_, command_pool_, 1, &i->command_buffer);
+      vkDestroyFence(device_, i->fence, nullptr);
+    }
 
     vkDestroyPipeline(device_, graphics_pipeline_, nullptr);
     vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
@@ -508,7 +522,7 @@ private:
     createGraphicsPipeline();
     createDepthResources();
     createFramebuffers();
-    createCommandBuffers();
+    //createCommandBuffers();
   }
   
   //---------------------------------------------------------------------------
@@ -982,6 +996,7 @@ private:
     VkCommandPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.queueFamilyIndex = queue_family_indices.graphics_family;
+    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     if (vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create graphics command pool!");
@@ -1254,65 +1269,65 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: allocates and records commands for each swap chain image
   //---------------------------------------------------------------------------
-  void createCommandBuffers() {
-    command_buffers_.resize(swap_chain_framebuffers_.size());
+  //void createCommandBuffers() {
+  //  command_buffers_.resize(swap_chain_framebuffers_.size());
 
-    VkCommandBufferAllocateInfo alloc_info = {};
-    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc_info.commandPool = command_pool_;
-    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // determines if it's a primary buffer or a secondary buffer
-    alloc_info.commandBufferCount = (uint32_t)command_buffers_.size();
+  //  VkCommandBufferAllocateInfo alloc_info = {};
+  //  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  //  alloc_info.commandPool = command_pool_;
+  //  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // determines if it's a primary buffer or a secondary buffer
+  //  alloc_info.commandBufferCount = (uint32_t)command_buffers_.size();
 
-    if (vkAllocateCommandBuffers(device_, &alloc_info, command_buffers_.data()) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to allocate command buffers!");
-    }
+  //  if (vkAllocateCommandBuffers(device_, &alloc_info, command_buffers_.data()) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to allocate command buffers!");
+  //  }
 
-    for (size_t i = 0; i < command_buffers_.size(); i++) {
-      VkCommandBufferBeginInfo begin_info = {};
-      begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-      begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT; // specifies how we're going to use the command buffer
+  //  for (size_t i = 0; i < command_buffers_.size(); i++) {
+  //    VkCommandBufferBeginInfo begin_info = {};
+  //    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  //    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT; // specifies how we're going to use the command buffer
 
-      vkBeginCommandBuffer(command_buffers_[i], &begin_info); // a call to this function implicitly resets the command buffer
+  //    vkBeginCommandBuffer(command_buffers_[i], &begin_info); // a call to this function implicitly resets the command buffer
 
-      VkRenderPassBeginInfo render_pass_info = {};
-      render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-      render_pass_info.renderPass = render_pass_;
-      render_pass_info.framebuffer = swap_chain_framebuffers_[i];
+  //    VkRenderPassBeginInfo render_pass_info = {};
+  //    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  //    render_pass_info.renderPass = render_pass_;
+  //    render_pass_info.framebuffer = swap_chain_framebuffers_[i];
 
-      // defining the size of the render area
-      render_pass_info.renderArea.offset = { 0, 0 };
-      render_pass_info.renderArea.extent = swap_chain_extent_;
+  //    // defining the size of the render area
+  //    render_pass_info.renderArea.offset = { 0, 0 };
+  //    render_pass_info.renderArea.extent = swap_chain_extent_;
 
-      std::array<VkClearValue, 2> clear_values = {};
-      clear_values[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
-      clear_values[1].depthStencil = { 1.0f, 0 };
+  //    std::array<VkClearValue, 2> clear_values = {};
+  //    clear_values[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+  //    clear_values[1].depthStencil = { 1.0f, 0 };
 
-      render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
-      render_pass_info.pClearValues = clear_values.data();
+  //    render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
+  //    render_pass_info.pClearValues = clear_values.data();
 
-      vkCmdBeginRenderPass(command_buffers_[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+  //    vkCmdBeginRenderPass(command_buffers_[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
-      // binding the graphics pipeline
-      vkCmdBindPipeline(command_buffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_);
+  //    // binding the graphics pipeline
+  //    vkCmdBindPipeline(command_buffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_);
 
-      // binding the vertex buffer during rendering
-      VkBuffer vertex_buffers[] = { vertex_buffer_ };
-      VkDeviceSize offsets[] = { 0 };
-      vkCmdBindVertexBuffers(command_buffers_[i], 0, 1, vertex_buffers, offsets);
+  //    // binding the vertex buffer during rendering
+  //    VkBuffer vertex_buffers[] = { vertex_buffer_ };
+  //    VkDeviceSize offsets[] = { 0 };
+  //    vkCmdBindVertexBuffers(command_buffers_[i], 0, 1, vertex_buffers, offsets);
 
-      vkCmdBindIndexBuffer(command_buffers_[i], index_buffer_, 0, VK_INDEX_TYPE_UINT32);
-      vkCmdBindDescriptorSets(command_buffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_set_, 0, nullptr);
+  //    vkCmdBindIndexBuffer(command_buffers_[i], index_buffer_, 0, VK_INDEX_TYPE_UINT32);
+  //    vkCmdBindDescriptorSets(command_buffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_set_, 0, nullptr);
 
-      // draw command
-      vkCmdDrawIndexed(command_buffers_[i], static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
+  //    // draw command
+  //    vkCmdDrawIndexed(command_buffers_[i], static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
 
-      vkCmdEndRenderPass(command_buffers_[i]); // finishing the render pass
+  //    vkCmdEndRenderPass(command_buffers_[i]); // finishing the render pass
 
-      if (vkEndCommandBuffer(command_buffers_[i]) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to record command buffer!");
-      }
-    }
-  }
+  //    if (vkEndCommandBuffer(command_buffers_[i]) != VK_SUCCESS) {
+  //      throw std::runtime_error("Failed to record command buffer!");
+  //    }
+  //  }
+  //}
 
   //---------------------------------------------------------------------------
   // Purpose: creating semaphores to synchronise the rendering process
@@ -1378,7 +1393,7 @@ private:
     submit_info.pWaitSemaphores = wait_semaphores;
     submit_info.pWaitDstStageMask = wait_stages;
     submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffers_[image_index];
+    //submit_info.pCommandBuffers = &command_buffers_[image_index];
 
     VkSemaphore signal_semaphores[] = { render_finished_semaphore_ };
     submit_info.signalSemaphoreCount = 1;
@@ -1738,10 +1753,10 @@ private:
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &command_buffer;
 
-    vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphics_queue_);
+vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
+vkQueueWaitIdle(graphics_queue_);
 
-    vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
+vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   }
 
   //---------------------------------------------------------------------------
@@ -1830,6 +1845,40 @@ private:
 
     return indices;
   }
+
+  //---------------------------------------------------------------------------
+  // Purpose: Get available command buffer or create a new one if none...
+  // ...available. Also associate fence with the command buffer
+  //---------------------------------------------------------------------------
+  VulkanCommandBuffer_t getCommandBuffer() {
+    VulkanCommandBuffer_t command_buffer;
+    if (command_buffers_.size() > 0) {
+      // If the fence associated with the command buffer has finished, reset it and return it
+      if (vkGetFenceStatus(device_, command_buffers_.back().fence) == VK_SUCCESS) {
+        VulkanCommandBuffer_t *p_cmd_buffer = &command_buffers_.back();
+        command_buffer.command_buffer = p_cmd_buffer->command_buffer;
+        command_buffer.fence = p_cmd_buffer->fence;
+
+        vkResetCommandBuffer(command_buffer.command_buffer, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+        vkResetFences(device_, 1, &command_buffer.fence);
+        command_buffers_.pop_back();
+        return command_buffer;
+      }
+      // Create a new command buffer with the associated fence
+      VkCommandBufferAllocateInfo command_buffer_alloc_info = {};
+      command_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+      command_buffer_alloc_info.commandBufferCount = 1;
+      command_buffer_alloc_info.commandPool = command_pool_;
+      command_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+      vkAllocateCommandBuffers(device_, &command_buffer_alloc_info, &command_buffer.command_buffer);
+
+      VkFenceCreateInfo fence_create_info = {};
+      fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+      vkCreateFence(device_, &fence_create_info, nullptr, &command_buffer.fence);
+      return command_buffer;
+    }
+  }
+
 
   //---------------------------------------------------------------------------
   // Purpose: Find the required extensions to have Vulkan working
