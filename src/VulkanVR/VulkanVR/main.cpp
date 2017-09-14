@@ -367,6 +367,7 @@ private:
 
     setupTexturemaps();
     loadModel();
+    setupCameras();
 
     vkEndCommandBuffer(current_command_buffer_.command_buffer);
     VkSubmitInfo submit_info = {};
@@ -385,8 +386,7 @@ private:
     //createFramebuffers();
 
 
-    //setupCameras();
-
+    
     //createVertexBuffer();
     //createIndexBuffer();
     //createUniformBuffer();
@@ -407,8 +407,8 @@ private:
     while (!glfwWindowShouldClose(companion_window_)) {
       glfwPollEvents();
 
-      updateUniformBuffer();
-      drawFrame();
+      //updateUniformBuffer();
+      //drawFrame();
     }
 
     vkDeviceWaitIdle(device_);
@@ -1318,7 +1318,9 @@ private:
       vkGetBufferMemoryRequirements(device_, scene_constant_buffer_[eye], &memory_requirements);
 
       VkMemoryAllocateInfo alloc_info = {};
+      alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
       alloc_info.allocationSize = memory_requirements.size;
+      alloc_info.memoryTypeIndex = findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
       vkAllocateMemory(device_, &alloc_info, nullptr, &scene_constant_buffer_memory_[eye]);
       vkBindBufferMemory(device_, scene_constant_buffer_[eye], scene_constant_buffer_memory_[eye], 0);
@@ -2431,6 +2433,8 @@ private:
   void setupCameras() {
     mat4_proj_left_ = getHMDMatrixProjectionEye(vr::Eye_Left);
     mat4_proj_right_ = getHMDMatrixProjectionEye(vr::Eye_Right);
+    mat4_eye_pos_left_ = getHMDMatrixPoseEye(vr::Eye_Left);
+    mat4_eye_pos_right_ = getHMDMatrixPoseEye(vr::Eye_Right);
   }
 
   //---------------------------------------------------------------------------
