@@ -75,8 +75,7 @@ const bool enable_validation_layers = true;
 // Purpose: looking up the address of the extension to be exclusively loaded
 //-----------------------------------------------------------------------------
 VkResult CreateDebugReportCallbackEXT(VkInstance instance, const VkDebugReportCallbackCreateInfoEXT* pCreateInfo,
-  const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback)
-{
+  const VkAllocationCallbacks* pAllocator, VkDebugReportCallbackEXT* pCallback) {
   // returns a nullptr if the extension function is not loaded
   auto func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
   if (func != nullptr) {
@@ -103,7 +102,7 @@ void DestroyDebugReportCallbackEXT(VkInstance instance, VkDebugReportCallbackEXT
 //-----------------------------------------------------------------------------
 struct QueueFamilyIndices {
   // -1 denotes "not found"
-  int graphics_family = -1; 
+  int graphics_family = -1;
   int present_family = -1;
 
   bool isComplete() {
@@ -186,7 +185,7 @@ struct UniformBufferObject {
   glm::mat4 proj;
 };
 
-class HelloTriangleApplication {
+class VulkanVRApplication {
 public:
   //---------------------------------------------------------------------------
   // Purpose: run all the important functions
@@ -205,7 +204,7 @@ private:
   VkInstance instance_;
   VkDebugReportCallbackEXT callback_;
   VkSurfaceKHR surface_;
-    
+
   VkPhysicalDevice physical_device_ = VK_NULL_HANDLE; // implicitly destroyed with VkInstance
   VkPhysicalDeviceProperties physical_device_properties;
   VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
@@ -280,7 +279,7 @@ private:
 
   VkBuffer scene_uniform_buffer_[2];
   VkDeviceMemory scene_uniform_buffer_memory_[2];
-  
+
   glm::mat4 mat4_proj_left_;
   glm::mat4 mat4_proj_right_;
   glm::mat4 mat4_eye_pos_left_;
@@ -314,14 +313,14 @@ private:
     glfwInit(); // Initialize GLFW
 
     // GLFW_NO_API tells GLFW not to create an OpenGL context
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); 
-    
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
     //---------//
     // VR code //
     //---------//
+    current_command_buffer_ = {};
     memset(&left_eye_desc_, 0, sizeof(left_eye_desc_));
     memset(&right_eye_desc_, 0, sizeof(right_eye_desc_));
-
     vr::EVRInitError e_error = vr::VRInitError_None;
     p_hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
     if (e_error != vr::VRInitError_None) {
@@ -335,7 +334,7 @@ private:
     //  vr::VR_Shutdown();
     //  throw std::runtime_error("Unable to get render model interface.");
     //}
-    
+
     near_clip_ = 0.1f;
     far_clip_ = 30.0f;
 
@@ -347,7 +346,7 @@ private:
     companion_window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
 
     glfwSetWindowUserPointer(companion_window_, this);
-    glfwSetWindowSizeCallback(companion_window_, HelloTriangleApplication::onWindowResized);
+    glfwSetWindowSizeCallback(companion_window_, VulkanVRApplication::onWindowResized);
   }
 
   //---------------------------------------------------------------------------
@@ -369,6 +368,15 @@ private:
     setupTexturemaps();
     loadModel();
 
+    vkEndCommandBuffer(current_command_buffer_.command_buffer);
+    VkSubmitInfo submit_info = {};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &current_command_buffer_.command_buffer;
+    vkQueueSubmit(graphics_queue_, 1, &submit_info, current_command_buffer_.fence);
+    command_buffers_.push_front(current_command_buffer_);
+
+    vkQueueWaitIdle(graphics_queue_);
 
     //createDescriptorSetLayout();
     //createGraphicsPipeline();
@@ -519,7 +527,7 @@ private:
   static void onWindowResized(GLFWwindow* window, int width, int height) {
     if (width == 0 || height == 0) { return; }
 
-    HelloTriangleApplication* app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    VulkanVRApplication* app = reinterpret_cast<VulkanVRApplication*>(glfwGetWindowUserPointer(window));
     app->recreateSwapChain();
   }
 
@@ -537,7 +545,7 @@ private:
     createFramebuffers();
     //createCommandBuffers();
   }
-  
+
   //---------------------------------------------------------------------------
   // Purpose: initializing Vulkan with an instance
   //---------------------------------------------------------------------------
@@ -583,7 +591,7 @@ private:
     }
 
     if (!enable_validation_layers) { return; }
-    
+
     VkDebugReportCallbackCreateInfoEXT debug_create_info = {};
     debug_create_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
 
@@ -653,7 +661,7 @@ private:
       queue_create_info.pQueuePriorities = &queue_priority;
       queue_create_infos.push_back(queue_create_info);
     }
-    
+
     // specifying what set of device features we'll be using
     VkPhysicalDeviceFeatures device_features = {};
     vkGetPhysicalDeviceFeatures(physical_device_, &device_features);
@@ -698,7 +706,7 @@ private:
 
     // setting the number of images in the swap chain.
     uint32_t image_count = swap_chain_support.capabilities.minImageCount + 1;
-    
+
     // must check if maxImageCount is set to 0 and clamp the image count by making sure it doesn't go over maxImageCount
     // if maxImageCount is set to 0, there would be an unlimited number of images until memory runs out
     if (swap_chain_support.capabilities.maxImageCount > 0 && image_count > swap_chain_support.capabilities.maxImageCount) {
@@ -715,10 +723,10 @@ private:
     create_info.imageExtent = extent;
     create_info.imageArrayLayers = 1; // always set to 1 unless developing stereoscopic 3D application
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;  // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
-    
+
     // specifying how to handle swap chain images across multiple queue families
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
-    
+
     // specifying which queue families are sharing images in VK_SHARING_MODE_CONCURRENT 
     uint32_t queue_family_indices[] = { (uint32_t)indices.graphics_family, (uint32_t)indices.present_family };
 
@@ -763,12 +771,12 @@ private:
     attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clearing the framebuffer before drawing a new frame
     attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // rendered contents will be stored in memory and can be read later
-    attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; 
+    attachment_desc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment_desc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachment_desc.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // specifies the layout before the render pass begins
     attachment_desc.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // specifies the layout to automatically transition to when the render pass finishes
     attachment_desc.flags = 0;
-    
+
     VkSubpassDescription subpass = {};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; // have to say explicitly that its a graphics subpass instead of a compute subpass
     subpass.flags = 0;
@@ -789,7 +797,7 @@ private:
     render_pass_info.pAttachments = &attachment_desc;
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
-    render_pass_info.dependencyCount = 1;
+    render_pass_info.dependencyCount = 0;
     render_pass_info.pDependencies = NULL;
 
     if (vkCreateRenderPass(device_, &render_pass_info, nullptr, &render_pass_) != VK_SUCCESS) {
@@ -798,18 +806,36 @@ private:
 
     // Create image views
     swap_chain_image_views_.resize(swap_chain_images_.size());
+    swap_chain_framebuffers_.resize(swap_chain_images_.size());
 
     for (uint32_t i = 0; i < swap_chain_images_.size(); i++) {
-      swap_chain_image_views_[i] = createImageView(swap_chain_images_[i], swap_chain_image_format_, VK_IMAGE_ASPECT_COLOR_BIT);
+      VkImageViewCreateInfo view_info = {};
+      view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+      view_info.flags = 0;
+      view_info.image = swap_chain_images_[i];
+      view_info.viewType = VK_IMAGE_VIEW_TYPE_2D; // allows you to treat images as 1D, 2D, 3D textures or cube maps
+      view_info.format = swap_chain_image_format_;
+      view_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+      view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      view_info.subresourceRange.baseMipLevel = 0;
+      view_info.subresourceRange.levelCount = 1;
+      view_info.subresourceRange.baseArrayLayer = 0;
+      view_info.subresourceRange.layerCount = 1;
+
+      if (vkCreateImageView(device_, &view_info, nullptr, &swap_chain_image_views_[i]) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create texture image view!");
+      }
 
       VkImageView attachments[1] = { swap_chain_image_views_[i] };
       VkFramebufferCreateInfo framebuffer_create_info = {};
       framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+      framebuffer_create_info.renderPass = render_pass_;
       framebuffer_create_info.attachmentCount = 1;
       framebuffer_create_info.pAttachments = &attachments[0];
       framebuffer_create_info.width = WIDTH;
       framebuffer_create_info.height = HEIGHT;
       framebuffer_create_info.layers = 1;
+
       if (vkCreateFramebuffer(device_, &framebuffer_create_info, nullptr, &swap_chain_framebuffers_[i]) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create framebuffer!");
       }
@@ -1022,8 +1048,8 @@ private:
   void createDepthResources() {
     VkFormat depth_format = findDepthFormat();
 
-    createImage(swap_chain_extent_.width, swap_chain_extent_.height, depth_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_image_, depth_image_memory_);
-    depth_image_view_ = createImageView(depth_image_, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+    //createImage(swap_chain_extent_.width, swap_chain_extent_.height, depth_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_image_, depth_image_memory_);
+    //depth_image_view_ = createImageView(depth_image_, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     transitionImageLayout(depth_image_, depth_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
   }
@@ -1082,7 +1108,7 @@ private:
     // free the image
     stbi_image_free(pixels);
 
-    createImage(tex_width, tex_height, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture_image_, texture_image_memory_);
+    //createImage(tex_width, tex_height, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture_image_, texture_image_memory_);
 
     transitionImageLayout(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     copyBufferToImage(staging_buffer, texture_image_, static_cast<uint32_t>(tex_width), static_cast<uint32_t>(tex_height));
@@ -1091,7 +1117,7 @@ private:
     vkDestroyBuffer(device_, staging_buffer, nullptr);
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
 
-    texture_image_view_ = createImageView(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    //texture_image_view_ = createImageView(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
     VkSamplerCreateInfo sampler_info = {};
     sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -1126,13 +1152,14 @@ private:
     }
 
     // Copy the base to a buffer, reserve for mip maps
-    VkDeviceSize buffer_size = 0;
-    uint8_t *p_buffer = new uint8_t[tex_width * tex_height * 4 * 2];
-    uint8_t *p_prev_buffer = p_buffer;
-    uint8_t *p_current_buffer = p_buffer;
-    memcpy(p_current_buffer, &pixels, sizeof(uint8_t) * tex_width * tex_height * 4);
-    p_current_buffer += sizeof(uint8_t) * tex_width * tex_height * 4;
+    //uint8_t *p_buffer = new uint8_t[tex_width * tex_height * 4 * 2];
+    //uint8_t *p_prev_buffer = p_buffer;
+    //uint8_t *p_current_buffer = p_buffer;
+    //memcpy(p_current_buffer, &pixels, static_cast<size_t>(sizeof(uint8_t) * tex_width * tex_height * 4));
+    //p_current_buffer += sizeof(uint8_t) * tex_width * tex_height * 4;
 
+    VkDeviceSize buffer_size = tex_width * tex_height * 4;
+    
     std::vector<VkBufferImageCopy> buffer_image_copies;
     VkBufferImageCopy buffer_image_copy = {};
     buffer_image_copy.bufferOffset = 0;
@@ -1150,65 +1177,32 @@ private:
     buffer_image_copy.imageExtent.depth = 1;
     buffer_image_copies.push_back(buffer_image_copy);
 
-    int mip_width = tex_width;
-    int mip_height = tex_height;
+    //int mip_width = tex_width;
+    //int mip_height = tex_height;
 
-    while (mip_width > 1 && mip_height > 1) {
-      GenMipMapRGBA(p_prev_buffer, p_current_buffer, mip_width, mip_height, &mip_width, &mip_height);
-      buffer_image_copy.bufferOffset = p_current_buffer - p_buffer;
-      buffer_image_copy.imageSubresource.mipLevel++;
-      buffer_image_copy.imageExtent.width = mip_width;
-      buffer_image_copy.imageExtent.height = mip_height;
-      buffer_image_copies.push_back(buffer_image_copy);
-      p_prev_buffer = p_current_buffer;
-      p_current_buffer += (mip_width * mip_height * 4 * sizeof(uint8_t));
-    }
-    buffer_size = p_current_buffer - p_buffer;
+    //while (mip_width > 1 && mip_height > 1) {
+    //  GenMipMapRGBA(p_prev_buffer, p_current_buffer, mip_width, mip_height, &mip_width, &mip_height);
+    //  buffer_image_copy.bufferOffset = p_current_buffer - p_buffer;
+    //  buffer_image_copy.imageSubresource.mipLevel++;
+    //  buffer_image_copy.imageExtent.width = mip_width;
+    //  buffer_image_copy.imageExtent.height = mip_height;
+    //  buffer_image_copies.push_back(buffer_image_copy);
+    //  p_prev_buffer = p_current_buffer;
+    //  p_current_buffer += (mip_width * mip_height * 4 * sizeof(uint8_t));
+    //}
+    //buffer_size = p_current_buffer - p_buffer;
 
     // Create the image
-    VkImageCreateInfo image_create_info = {};
-    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_create_info.imageType = VK_IMAGE_TYPE_2D;
-    image_create_info.extent.width = tex_width;
-    image_create_info.extent.height = tex_height;
-    image_create_info.extent.depth = 1;
-    image_create_info.mipLevels = (uint32_t)buffer_image_copies.size();
-    image_create_info.arrayLayers = 1;
-    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    image_create_info.flags = 0;
-    vkCreateImage(device_, &image_create_info, nullptr, &scene_image_);
+    createImage(tex_width, tex_height, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL,
+      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_image_, scene_image_memory_);
 
-    VkMemoryRequirements memory_requirements = {};
-    vkGetImageMemoryRequirements(device_, scene_image_, &memory_requirements);
-
-    VkMemoryAllocateInfo memory_allocate_info = {};
-    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocate_info.allocationSize = memory_requirements.size;
-    findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vkAllocateMemory(device_, &memory_allocate_info, nullptr, &scene_image_memory_);
-    vkBindImageMemory(device_, scene_image_, scene_image_memory_, 0);
-
-    VkImageViewCreateInfo image_view_create_info = {};
-    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    image_view_create_info.flags = 0;
-    image_view_create_info.image = scene_image_;
-    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    image_view_create_info.format = image_create_info.format;
-    image_view_create_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
-    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    image_view_create_info.subresourceRange.baseMipLevel = 0;
-    image_view_create_info.subresourceRange.levelCount = image_create_info.mipLevels;
-    image_view_create_info.subresourceRange.baseArrayLayer = 0;
-    image_view_create_info.subresourceRange.layerCount = 1;
-    vkCreateImageView(device_, &image_view_create_info, nullptr, &scene_image_view_);
+    // Create the image view
+    createImageView(scene_image_, scene_image_view_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // Create a staging buffer
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_memory);
+    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 
     void* data;
     vkMapMemory(device_, staging_buffer_memory, 0, buffer_size, 0, &data);
@@ -1233,7 +1227,7 @@ private:
     image_memory_barrier.image = scene_image_;
     image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     image_memory_barrier.subresourceRange.baseMipLevel = 0;
-    image_memory_barrier.subresourceRange.levelCount = image_create_info.mipLevels;
+    image_memory_barrier.subresourceRange.levelCount = (uint32_t)buffer_image_copies.size();
     image_memory_barrier.subresourceRange.baseArrayLayer = 0;
     image_memory_barrier.subresourceRange.layerCount = 1;
     image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
@@ -1261,10 +1255,11 @@ private:
     sampler_create_info.anisotropyEnable = VK_TRUE;
     sampler_create_info.maxAnisotropy = 16.0f;
     sampler_create_info.minLod = 0.0f;
-    sampler_create_info.maxLod = (float)image_create_info.mipLevels;
+    sampler_create_info.maxLod = 0.0f;
     vkCreateSampler(device_, &sampler_create_info, nullptr, &scene_sampler_);
 
-    delete[] p_buffer;
+    //delete[] p_buffer;
+    stbi_image_free(pixels);
   }
 
   //---------------------------------------------------------------------------
@@ -1309,7 +1304,7 @@ private:
     }
 
     // Create the vertex buffer and fill with data
-    createBuffer(vertices_.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_buffer_, vertex_buffer_memory_);
+    createBuffer(vertices_.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer_, vertex_buffer_memory_);
 
     // Create the constant buffer to hold the per-eye constant buffer data
     for (uint32_t eye = 0; eye < 2; eye++) {
@@ -1833,7 +1828,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: helper function to create buffers (ALTER)
   //---------------------------------------------------------------------------
-  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
+  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
     // create buffer
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1851,6 +1846,7 @@ private:
     VkMemoryAllocateInfo alloc_info = {};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_requirements.size;
+    alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
 
     if (vkAllocateMemory(device_, &alloc_info, nullptr, &buffer_memory) != VK_SUCCESS) {
       throw std::runtime_error("Failed to allocate buffer memory!");
@@ -1861,23 +1857,60 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: create an image object
+  // Purpose: create an image object (LEGACY)
   //---------------------------------------------------------------------------
-  void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& image_memory) {
+  //void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& image_memory) {
+  //  VkImageCreateInfo image_info = {};
+  //  image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+  //  image_info.imageType = VK_IMAGE_TYPE_2D;
+  //  image_info.extent.width = width;
+  //  image_info.extent.height = height;
+  //  image_info.extent.depth = 1;
+  //  image_info.mipLevels = 1;
+  //  image_info.arrayLayers = 1;
+  //  image_info.format = format;
+  //  image_info.tiling = tiling;
+  //  image_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+  //  image_info.usage = usage;
+  //  image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+  //  image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+  //  if (vkCreateImage(device_, &image_info, nullptr, &image) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to create image!");
+  //  }
+
+  //  VkMemoryRequirements mem_requirements;
+  //  vkGetImageMemoryRequirements(device_, image, &mem_requirements);
+
+  //  VkMemoryAllocateInfo alloc_info = {};
+  //  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  //  alloc_info.allocationSize = mem_requirements.size;
+  //  alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
+
+  //  if (vkAllocateMemory(device_, &alloc_info, nullptr, &image_memory) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to allocate image memory!");
+  //  }
+
+  //  vkBindImageMemory(device_, image, image_memory, 0);
+  //}
+
+  //---------------------------------------------------------------------------
+  // Purpose: create an image object (LEGACY)
+  //---------------------------------------------------------------------------
+  void createImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& image_memory) {
     VkImageCreateInfo image_info = {};
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_info.imageType = VK_IMAGE_TYPE_2D;
     image_info.extent.width = width;
     image_info.extent.height = height;
     image_info.extent.depth = 1;
-    image_info.mipLevels = 1;
+    image_info.mipLevels = mip_levels;
     image_info.arrayLayers = 1;
     image_info.format = format;
     image_info.tiling = tiling;
-    image_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-    image_info.usage = usage;
     image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_info.usage = usage;
+    image_info.flags = 0;
 
     if (vkCreateImage(device_, &image_info, nullptr, &image) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create image!");
@@ -1899,9 +1932,9 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: create an image view
+  // Purpose: create an image view (ALTER)
   //---------------------------------------------------------------------------
-  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) {
+  VkImageView createImageView(VkImage image, VkImageView image_view, VkFormat format, VkImageAspectFlags aspect_flags) {
     VkImageViewCreateInfo view_info = {};
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.flags = 0;
@@ -1914,12 +1947,10 @@ private:
     view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.baseArrayLayer = 0;
     view_info.subresourceRange.layerCount = 1;
-    VkImageView image_view;
+
     if (vkCreateImageView(device_, &view_info, nullptr, &image_view) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create texture image view!");
     }
-
-    return image_view;
   }
 
   //---------------------------------------------------------------------------
@@ -1971,10 +2002,10 @@ private:
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &command_buffer;
 
-vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
-vkQueueWaitIdle(graphics_queue_);
+    vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphics_queue_);
 
-vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
+    vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   }
 
   //---------------------------------------------------------------------------
@@ -2082,19 +2113,20 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
         command_buffers_.pop_back();
         return command_buffer;
       }
-      // Create a new command buffer with the associated fence
-      VkCommandBufferAllocateInfo command_buffer_alloc_info = {};
-      command_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-      command_buffer_alloc_info.commandBufferCount = 1;
-      command_buffer_alloc_info.commandPool = command_pool_;
-      command_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-      vkAllocateCommandBuffers(device_, &command_buffer_alloc_info, &command_buffer.command_buffer);
-
-      VkFenceCreateInfo fence_create_info = {};
-      fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-      vkCreateFence(device_, &fence_create_info, nullptr, &command_buffer.fence);
-      return command_buffer;
     }
+    // Create a new command buffer with the associated fence
+    VkCommandBufferAllocateInfo command_buffer_alloc_info = {};
+    command_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_alloc_info.commandBufferCount = 1;
+    command_buffer_alloc_info.commandPool = command_pool_;
+    command_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    vkAllocateCommandBuffers(device_, &command_buffer_alloc_info, &command_buffer.command_buffer);
+
+    VkFenceCreateInfo fence_create_info = {};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    vkCreateFence(device_, &fence_create_info, nullptr, &command_buffer.fence);
+    return command_buffer;
+
   }
 
   //---------------------------------------------------------------------------
@@ -2379,7 +2411,7 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
 
       VkMemoryRequirements memory_requirements = {};
       vkGetBufferMemoryRequirements(device_, scene_uniform_buffer_[eye], &memory_requirements);
-      
+
       VkMemoryAllocateInfo alloc_info = {};
       findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
       alloc_info.allocationSize = memory_requirements.size;
@@ -2435,7 +2467,7 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   // Purpose: [VR] Set up render targets
   //---------------------------------------------------------------------------
   void setupStereoRenderTargets() {
-    if(!p_hmd_) {
+    if (!p_hmd_) {
       throw std::runtime_error("Failed to set up render targets");
     }
 
@@ -2488,7 +2520,7 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
     imageViewCreateInfo.subresourceRange.levelCount = 1;
     imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
     imageViewCreateInfo.subresourceRange.layerCount = 1;
-    
+
     vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &framebufferDesc.image_view);
 
     //-----------------------------------//
@@ -2497,7 +2529,7 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
     imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
     imageCreateInfo.format = VK_FORMAT_D32_SFLOAT;
     imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    
+
     vkCreateImage(device_, &imageCreateInfo, nullptr, &framebufferDesc.depth_stencil_image);
 
     vkGetImageMemoryRequirements(device_, framebufferDesc.depth_stencil_image, &memory_requirements);
@@ -2587,7 +2619,7 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
 // Purpose: 
 //---------------------------------------------------------------------------
 int main() {
-  HelloTriangleApplication app;
+  VulkanVRApplication app;
 
   try {
     app.run();
