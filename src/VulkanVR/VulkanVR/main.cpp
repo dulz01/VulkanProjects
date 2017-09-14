@@ -245,7 +245,6 @@ private:
   VkDeviceMemory vertex_buffer_memory_;
   VkBuffer index_buffer_;
   VkDeviceMemory index_buffer_memory_;
-
   VkBuffer uniform_buffer_;
   VkDeviceMemory uniform_buffer_memory_;
 
@@ -298,7 +297,7 @@ private:
     VkFence fence;
   };
   std::deque<VulkanCommandBuffer_t> command_buffers_;
-  VulkanCommandBuffer_t current_command_buffer;
+  VulkanCommandBuffer_t current_command_buffer_;
 
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
@@ -353,6 +352,13 @@ private:
 
     createCommandPool();
 
+    current_command_buffer_ = getCommandBuffer();
+    VkCommandBufferBeginInfo command_buffer_begin_info = {};
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(current_command_buffer_.command_buffer, &command_buffer_begin_info);
+
+    setupTexturemaps();
 
 
     //createDescriptorSetLayout();
@@ -361,7 +367,6 @@ private:
     //createDepthResources();
     //createFramebuffers();
 
-    //setupTextures();
     //loadModel();
 
     //setupCameras();
@@ -1059,7 +1064,7 @@ private:
     // copy image to temporary buffer
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+    //createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 
     void* data;
     vkMapMemory(device_, staging_buffer_memory, 0, image_size, 0, &data);
@@ -1098,6 +1103,154 @@ private:
     if (vkCreateSampler(device_, &sampler_info, nullptr, &texture_sampler_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create texture sampler!");
     }
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: create an image for textures
+  //---------------------------------------------------------------------------
+  void setupTexturemaps() {
+    // loading an image
+    int tex_width, tex_height, tex_channels;
+    stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+
+    if (!pixels) {
+      throw std::runtime_error("Failed to load texture image!");
+    }
+
+    // Copy the base to a buffer, reserve for mip maps
+    VkDeviceSize buffer_size = 0;
+    uint8_t *p_buffer = new uint8_t[tex_width * tex_height * 4 * 2];
+    uint8_t *p_prev_buffer = p_buffer;
+    uint8_t *p_current_buffer = p_buffer;
+    memcpy(p_current_buffer, &pixels, sizeof(uint8_t) * tex_width * tex_height * 4);
+    p_current_buffer += sizeof(uint8_t) * tex_width * tex_height * 4;
+
+    std::vector<VkBufferImageCopy> buffer_image_copies;
+    VkBufferImageCopy buffer_image_copy = {};
+    buffer_image_copy.bufferOffset = 0;
+    buffer_image_copy.bufferRowLength = 0;
+    buffer_image_copy.bufferImageHeight = 0;
+    buffer_image_copy.imageSubresource.baseArrayLayer = 0;
+    buffer_image_copy.imageSubresource.layerCount = 1;
+    buffer_image_copy.imageSubresource.mipLevel = 0;
+    buffer_image_copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    buffer_image_copy.imageOffset.x = 0;
+    buffer_image_copy.imageOffset.y = 0;
+    buffer_image_copy.imageOffset.z = 0;
+    buffer_image_copy.imageExtent.width = tex_width;
+    buffer_image_copy.imageExtent.height = tex_height;
+    buffer_image_copy.imageExtent.depth = 1;
+    buffer_image_copies.push_back(buffer_image_copy);
+
+    int mip_width = tex_width;
+    int mip_height = tex_height;
+
+    while (mip_width > 1 && mip_height > 1) {
+      GenMipMapRGBA(p_prev_buffer, p_current_buffer, mip_width, mip_height, &mip_width, &mip_height);
+      buffer_image_copy.bufferOffset = p_current_buffer - p_buffer;
+      buffer_image_copy.imageSubresource.mipLevel++;
+      buffer_image_copy.imageExtent.width = mip_width;
+      buffer_image_copy.imageExtent.height = mip_height;
+      buffer_image_copies.push_back(buffer_image_copy);
+      p_prev_buffer = p_current_buffer;
+      p_current_buffer += (mip_width * mip_height * 4 * sizeof(uint8_t));
+    }
+    buffer_size = p_current_buffer - p_buffer;
+
+    // Create the image
+    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.extent.width = tex_width;
+    image_create_info.extent.height = tex_height;
+    image_create_info.extent.depth = 1;
+    image_create_info.mipLevels = (uint32_t)buffer_image_copies.size();
+    image_create_info.arrayLayers = 1;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    image_create_info.flags = 0;
+    vkCreateImage(device_, &image_create_info, nullptr, &texture_image_);
+
+    VkMemoryRequirements memory_requirements = {};
+    vkGetImageMemoryRequirements(device_, texture_image_, &memory_requirements);
+
+    VkMemoryAllocateInfo memory_allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    memory_allocate_info.allocationSize = memory_requirements.size;
+    findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vkAllocateMemory(device_, &memory_allocate_info, nullptr, &texture_image_memory_);
+    vkBindImageMemory(device_, texture_image_, texture_image_memory_, 0);
+
+    VkImageViewCreateInfo image_view_create_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    image_view_create_info.flags = 0;
+    image_view_create_info.image = texture_image_;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.format = image_create_info.format;
+    image_view_create_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = image_create_info.mipLevels;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+    vkCreateImageView(device_, &image_view_create_info, nullptr, &texture_image_view_);
+
+    // Create a staging buffer
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, staging_buffer, staging_buffer_memory);
+
+    void* data;
+    vkMapMemory(device_, staging_buffer_memory, 0, buffer_size, 0, &data);
+    memcpy(data, pixels, static_cast<size_t>(buffer_size));
+    vkUnmapMemory(device_, staging_buffer_memory);
+
+    VkMappedMemoryRange memory_range = { VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE };
+    memory_range.memory = staging_buffer_memory;
+    memory_range.size = VK_WHOLE_SIZE;
+    vkFlushMappedMemoryRanges(device_, 1, &memory_range);
+
+    // Transition the image to TRANSFER_DST to receive image
+    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
+
+    VkImageMemoryBarrier image_memory_barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+    image_memory_barrier.srcAccessMask = 0;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    image_memory_barrier.image = texture_image_;
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.subresourceRange.baseMipLevel = 0;
+    image_memory_barrier.subresourceRange.levelCount = image_create_info.mipLevels;
+    image_memory_barrier.subresourceRange.baseArrayLayer = 0;
+    image_memory_barrier.subresourceRange.layerCount = 1;
+    image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
+    image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+
+    // Issue the copy to fill the image data
+    vkCmdCopyBufferToImage(current_command_buffer_.command_buffer, staging_buffer, texture_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)buffer_image_copies.size(), &buffer_image_copies[0]);
+
+    // Transition the image to SHADER_READ_OPTIMAL for reading
+    image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+
+    // Create the sampler
+    VkSamplerCreateInfo sampler_create_info = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    sampler_create_info.magFilter = VK_FILTER_LINEAR;
+    sampler_create_info.minFilter = VK_FILTER_LINEAR;
+    sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_create_info.anisotropyEnable = VK_TRUE;
+    sampler_create_info.maxAnisotropy = 16.0f;
+    sampler_create_info.minLod = 0.0f;
+    sampler_create_info.maxLod = (float)image_create_info.mipLevels;
+    vkCreateSampler(device_, &sampler_create_info, nullptr, &texture_sampler_);
+
+    delete[] p_buffer;
   }
 
   //---------------------------------------------------------------------------
@@ -1152,7 +1305,7 @@ private:
 
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 
     // filling the vertex buffer
     void* data;
@@ -1160,7 +1313,7 @@ private:
     memcpy(data, vertices_.data(), (size_t)buffer_size);
     vkUnmapMemory(device_, staging_buffer_memory);
 
-    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer_, vertex_buffer_memory_);
+    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer_, vertex_buffer_memory_);
 
     copyBuffer(staging_buffer, vertex_buffer_, buffer_size);
 
@@ -1176,14 +1329,14 @@ private:
 
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 
     void* data;
     vkMapMemory(device_, staging_buffer_memory, 0, buffer_size, 0, &data);
     memcpy(data, indices_.data(), (size_t)buffer_size);
     vkUnmapMemory(device_, staging_buffer_memory);
 
-    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer_, index_buffer_memory_);
+    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer_, index_buffer_memory_);
 
     copyBuffer(staging_buffer, index_buffer_, buffer_size);
 
@@ -1196,7 +1349,7 @@ private:
   //---------------------------------------------------------------------------
   void createUniformBuffer() {
     VkDeviceSize buffer_size = sizeof(UniformBufferObject);
-    createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer_, uniform_buffer_memory_);
+    //createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer_, uniform_buffer_memory_);
   }
 
   //---------------------------------------------------------------------------
@@ -1611,15 +1764,45 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: helper function to create buffers
+  // Purpose: helper function to create buffers (LEGACY)
   //---------------------------------------------------------------------------
-  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
+  //void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
+  //  // create buffer
+  //  VkBufferCreateInfo buffer_info = {};
+  //  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  //  buffer_info.size = size; // buffer size in bytes
+  //  buffer_info.usage = usage;
+
+  //  if (vkCreateBuffer(device_, &buffer_info, nullptr, &buffer) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to create buffer!");
+  //  }
+
+  //  // assign memory to buffer
+  //  VkMemoryRequirements mem_requirements;
+  //  vkGetBufferMemoryRequirements(device_, buffer, &mem_requirements);
+
+  //  VkMemoryAllocateInfo alloc_info = {};
+  //  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  //  alloc_info.allocationSize = mem_requirements.size;
+  //  alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
+
+  //  if (vkAllocateMemory(device_, &alloc_info, nullptr, &buffer_memory) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to allocate buffer memory!");
+  //  }
+
+  //  // associate memory with the buffer if allocation was successful
+  //  vkBindBufferMemory(device_, buffer, buffer_memory, 0);
+  //}
+
+  //---------------------------------------------------------------------------
+  // Purpose: helper function to create buffers (ALTER)
+  //---------------------------------------------------------------------------
+  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
     // create buffer
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buffer_info.size = size; // buffer size in bytes
     buffer_info.usage = usage;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // just like the swap chain this determines who shares the data
 
     if (vkCreateBuffer(device_, &buffer_info, nullptr, &buffer) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create buffer!");
@@ -1632,7 +1815,6 @@ private:
     VkMemoryAllocateInfo alloc_info = {};
     alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
 
     if (vkAllocateMemory(device_, &alloc_info, nullptr, &buffer_memory) != VK_SUCCESS) {
       throw std::runtime_error("Failed to allocate buffer memory!");
@@ -1879,7 +2061,6 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
     }
   }
 
-
   //---------------------------------------------------------------------------
   // Purpose: Find the required extensions to have Vulkan working
   //---------------------------------------------------------------------------
@@ -2088,6 +2269,56 @@ vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   //                       VIRTUAL REALITY FUNCTIONS                         //
   //-------------------------------------------------------------------------//
   //-------------------------------------------------------------------------//
+
+  //-----------------------------------------------------------------------------
+  // Purpose: generate next level mipmap for an RGBA image, from hellovr_vulkan...
+  // ...from openVR sdk sample codes.
+  //-----------------------------------------------------------------------------
+  void GenMipMapRGBA(const uint8_t *pSrc, uint8_t *pDst, int nSrcWidth, int nSrcHeight, int *pDstWidthOut, int *pDstHeightOut) {
+    *pDstWidthOut = nSrcWidth / 2;
+    if (*pDstWidthOut <= 0) {
+      *pDstWidthOut = 1;
+    }
+    *pDstHeightOut = nSrcHeight / 2;
+    if (*pDstHeightOut <= 0) {
+      *pDstHeightOut = 1;
+    }
+
+    for (int y = 0; y < *pDstHeightOut; y++) {
+      for (int x = 0; x < *pDstWidthOut; x++) {
+        int nSrcIndex[4];
+        float r = 0.0f;
+        float g = 0.0f;
+        float b = 0.0f;
+        float a = 0.0f;
+
+        nSrcIndex[0] = (((y * 2) * nSrcWidth) + (x * 2)) * 4;
+        nSrcIndex[1] = (((y * 2) * nSrcWidth) + (x * 2 + 1)) * 4;
+        nSrcIndex[2] = ((((y * 2) + 1) * nSrcWidth) + (x * 2)) * 4;
+        nSrcIndex[3] = ((((y * 2) + 1) * nSrcWidth) + (x * 2 + 1)) * 4;
+
+        // Sum all pixels
+        for (int nSample = 0; nSample < 4; nSample++) {
+          r += pSrc[nSrcIndex[nSample]];
+          g += pSrc[nSrcIndex[nSample] + 1];
+          b += pSrc[nSrcIndex[nSample] + 2];
+          a += pSrc[nSrcIndex[nSample] + 3];
+        }
+
+        // Average results
+        r /= 4.0;
+        g /= 4.0;
+        b /= 4.0;
+        a /= 4.0;
+
+        // Store resulting pixels
+        pDst[(y * (*pDstWidthOut) + x) * 4] = (uint8_t)(r);
+        pDst[(y * (*pDstWidthOut) + x) * 4 + 1] = (uint8_t)(g);
+        pDst[(y * (*pDstWidthOut) + x) * 4 + 2] = (uint8_t)(b);
+        pDst[(y * (*pDstWidthOut) + x) * 4 + 3] = (uint8_t)(a);
+      }
+    }
+  }
 
   //---------------------------------------------------------------------------
   // Purpose: [VR] Initialize the VR custom compositor
