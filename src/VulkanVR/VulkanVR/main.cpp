@@ -299,6 +299,14 @@ private:
   std::deque<VulkanCommandBuffer_t> command_buffers_;
   VulkanCommandBuffer_t current_command_buffer_;
 
+  VkBuffer scene_constant_buffer_[2];
+  VkBuffer scene_constant_buffer_memory_[2];
+  void* scene_constant_buffer_data_[2];
+  VkImage scene_image_;
+  VkDeviceMemory scene_image_memory_;
+  VkImageView scene_image_view_;
+  VkSampler scene_sampler_;
+
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
   //---------------------------------------------------------------------------
@@ -359,6 +367,7 @@ private:
     vkBeginCommandBuffer(current_command_buffer_.command_buffer, &command_buffer_begin_info);
 
     setupTexturemaps();
+    loadModel();
 
 
     //createDescriptorSetLayout();
@@ -367,7 +376,6 @@ private:
     //createDepthResources();
     //createFramebuffers();
 
-    //loadModel();
 
     //setupCameras();
 
@@ -1158,7 +1166,8 @@ private:
     buffer_size = p_current_buffer - p_buffer;
 
     // Create the image
-    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    VkImageCreateInfo image_create_info = {};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
     image_create_info.extent.width = tex_width;
     image_create_info.extent.height = tex_height;
@@ -1170,20 +1179,22 @@ private:
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     image_create_info.flags = 0;
-    vkCreateImage(device_, &image_create_info, nullptr, &texture_image_);
+    vkCreateImage(device_, &image_create_info, nullptr, &scene_image_);
 
     VkMemoryRequirements memory_requirements = {};
-    vkGetImageMemoryRequirements(device_, texture_image_, &memory_requirements);
+    vkGetImageMemoryRequirements(device_, scene_image_, &memory_requirements);
 
-    VkMemoryAllocateInfo memory_allocate_info = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    VkMemoryAllocateInfo memory_allocate_info = {};
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     memory_allocate_info.allocationSize = memory_requirements.size;
     findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vkAllocateMemory(device_, &memory_allocate_info, nullptr, &texture_image_memory_);
-    vkBindImageMemory(device_, texture_image_, texture_image_memory_, 0);
+    vkAllocateMemory(device_, &memory_allocate_info, nullptr, &scene_image_memory_);
+    vkBindImageMemory(device_, scene_image_, scene_image_memory_, 0);
 
-    VkImageViewCreateInfo image_view_create_info = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    VkImageViewCreateInfo image_view_create_info = {};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     image_view_create_info.flags = 0;
-    image_view_create_info.image = texture_image_;
+    image_view_create_info.image = scene_image_;
     image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
     image_view_create_info.format = image_create_info.format;
     image_view_create_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
@@ -1192,7 +1203,7 @@ private:
     image_view_create_info.subresourceRange.levelCount = image_create_info.mipLevels;
     image_view_create_info.subresourceRange.baseArrayLayer = 0;
     image_view_create_info.subresourceRange.layerCount = 1;
-    vkCreateImageView(device_, &image_view_create_info, nullptr, &texture_image_view_);
+    vkCreateImageView(device_, &image_view_create_info, nullptr, &scene_image_view_);
 
     // Create a staging buffer
     VkBuffer staging_buffer;
@@ -1204,7 +1215,8 @@ private:
     memcpy(data, pixels, static_cast<size_t>(buffer_size));
     vkUnmapMemory(device_, staging_buffer_memory);
 
-    VkMappedMemoryRange memory_range = { VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE };
+    VkMappedMemoryRange memory_range = {};
+    memory_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
     memory_range.memory = staging_buffer_memory;
     memory_range.size = VK_WHOLE_SIZE;
     vkFlushMappedMemoryRanges(device_, 1, &memory_range);
@@ -1212,12 +1224,13 @@ private:
     // Transition the image to TRANSFER_DST to receive image
     QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
 
-    VkImageMemoryBarrier image_memory_barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+    VkImageMemoryBarrier image_memory_barrier = {};
+    image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     image_memory_barrier.srcAccessMask = 0;
     image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    image_memory_barrier.image = texture_image_;
+    image_memory_barrier.image = scene_image_;
     image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     image_memory_barrier.subresourceRange.baseMipLevel = 0;
     image_memory_barrier.subresourceRange.levelCount = image_create_info.mipLevels;
@@ -1228,7 +1241,7 @@ private:
     vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
 
     // Issue the copy to fill the image data
-    vkCmdCopyBufferToImage(current_command_buffer_.command_buffer, staging_buffer, texture_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)buffer_image_copies.size(), &buffer_image_copies[0]);
+    vkCmdCopyBufferToImage(current_command_buffer_.command_buffer, staging_buffer, scene_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)buffer_image_copies.size(), &buffer_image_copies[0]);
 
     // Transition the image to SHADER_READ_OPTIMAL for reading
     image_memory_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1238,7 +1251,8 @@ private:
     vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
 
     // Create the sampler
-    VkSamplerCreateInfo sampler_create_info = { VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+    VkSamplerCreateInfo sampler_create_info = {};
+    sampler_create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler_create_info.magFilter = VK_FILTER_LINEAR;
     sampler_create_info.minFilter = VK_FILTER_LINEAR;
     sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
@@ -1248,7 +1262,7 @@ private:
     sampler_create_info.maxAnisotropy = 16.0f;
     sampler_create_info.minLod = 0.0f;
     sampler_create_info.maxLod = (float)image_create_info.mipLevels;
-    vkCreateSampler(device_, &sampler_create_info, nullptr, &texture_sampler_);
+    vkCreateSampler(device_, &sampler_create_info, nullptr, &scene_sampler_);
 
     delete[] p_buffer;
   }
@@ -1257,6 +1271,10 @@ private:
   // Purpose: loading in the model from file and storing the vertices and indices
   //---------------------------------------------------------------------------
   void loadModel() {
+    if (!p_hmd_) {
+      return;
+    }
+
     tinyobj::attrib_t attrib; // holds the positions, normals and texture coordinates
     std::vector<tinyobj::shape_t> shapes; // contains the objects and their faces
     std::vector<tinyobj::material_t> materials;
@@ -1286,14 +1304,32 @@ private:
         };
 
         vertex.colour = { 1.0f, 1.0f, 1.0f };
-
-        if (uniqueVertices.count(vertex) == 0) {
-          uniqueVertices[vertex] = static_cast<uint32_t>(vertices_.size());
-          vertices_.push_back(vertex);
-        }
-
-        indices_.push_back(uniqueVertices[vertex]);
+        vertices_.push_back(vertex);
       }
+    }
+
+    // Create the vertex buffer and fill with data
+    createBuffer(vertices_.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_buffer_, vertex_buffer_memory_);
+
+    // Create the constant buffer to hold the per-eye constant buffer data
+    for (uint32_t eye = 0; eye < 2; eye++) {
+      VkBufferCreateInfo buffer_create_info = {};
+      buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+      buffer_create_info.size = sizeof(glm::mat4);
+      buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+      vkCreateBuffer(device_, &buffer_create_info, nullptr, &scene_constant_buffer_[eye]);
+
+      VkMemoryRequirements memory_requirements = {};
+      vkGetBufferMemoryRequirements(device_, scene_constant_buffer_[eye], &memory_requirements);
+
+      VkMemoryAllocateInfo alloc_info = {};
+      alloc_info.allocationSize = memory_requirements.size;
+
+      vkAllocateMemory(device_, &alloc_info, nullptr, &scene_constant_buffer_memory_[eye]);
+      vkBindBufferMemory(device_, scene_constant_buffer_[eye], scene_constant_buffer_memory_[eye], 0);
+
+      // Keep map persistently
+      vkMapMemory(device_, scene_constant_buffer_memory_[eye], 0, VK_WHOLE_SIZE, 0, &scene_constant_buffer_data_[eye]);
     }
   }
 
