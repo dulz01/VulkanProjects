@@ -215,12 +215,13 @@ private:
   VkQueue graphics_queue_;
   VkQueue present_queue_;
 
-  VkSwapchainKHR swap_chain_;
-  std::vector<VkImage> swap_chain_images_; // implicitly created and destroyed
-  VkFormat swap_chain_image_format_;
-  VkExtent2D swap_chain_extent_;
-  std::vector<VkImageView> swap_chain_image_views_;
-  std::vector<VkFramebuffer> swap_chain_framebuffers_;
+  VkSwapchainKHR swapchain_;
+  std::vector<VkImage> swapchain_images_; // implicitly created and destroyed
+  VkFormat swapchain_image_format_;
+  VkExtent2D swapchain_extent_;
+  std::vector<VkImageView> swapchain_image_views_;
+  std::vector<VkFramebuffer> swapchain_framebuffers_;
+  std::vector<VkSemaphore> swapchain_semaphores_;
 
   VkRenderPass render_pass_;
   VkDescriptorSetLayout descriptor_set_layout_;
@@ -240,10 +241,10 @@ private:
 
   std::vector<Vertex> vertices_;
   std::vector<uint32_t> indices_;
-  VkBuffer vertex_buffer_;
-  VkDeviceMemory vertex_buffer_memory_;
-  VkBuffer index_buffer_;
-  VkDeviceMemory index_buffer_memory_;
+  VkBuffer companion_screen_vertex_buffer_;
+  VkDeviceMemory companion_screen_vertex_buffer_memory_;
+  VkBuffer companion_screen_index_buffer_;
+  VkDeviceMemory companion_screen_index_buffer_memory_;
   VkBuffer uniform_buffer_;
   VkDeviceMemory uniform_buffer_memory_;
 
@@ -254,7 +255,6 @@ private:
 
   VkSemaphore image_available_semaphore_;
   VkSemaphore render_finished_semaphore_;
-  std::vector<VkSemaphore> swapchain_semaphores_;
 
   //------------------//
   // variables for VR //
@@ -298,6 +298,8 @@ private:
   std::deque<VulkanCommandBuffer_t> command_buffers_;
   VulkanCommandBuffer_t current_command_buffer_;
 
+  VkBuffer scene_vertex_buffer_;
+  VkDeviceMemory scene_vertex_buffer_memory_;
   VkBuffer scene_constant_buffer_[2];
   VkBuffer scene_constant_buffer_memory_[2];
   void* scene_constant_buffer_data_[2];
@@ -305,6 +307,15 @@ private:
   VkDeviceMemory scene_image_memory_;
   VkImageView scene_image_view_;
   VkSampler scene_sampler_;
+
+  struct VertexDataWindow {
+    glm::vec2 position;
+    glm::vec2 tex_coord;
+
+    VertexDataWindow(const glm::vec2 &pos, const glm::vec2 tex) : position(pos), tex_coord(tex) {}
+  };
+
+  unsigned int companion_window_index_size_;
 
   //---------------------------------------------------------------------------
   // Purpose: initialise the windowing system
@@ -338,6 +349,8 @@ private:
     near_clip_ = 0.1f;
     far_clip_ = 30.0f;
 
+    companion_window_index_size_ = 0;
+
     //----------------//
     // End of VR code //
     //----------------//
@@ -368,6 +381,8 @@ private:
     setupTexturemaps();
     loadModel();
     setupCameras();
+    setupStereoRenderTargets();
+    setupCompanionWindow();
 
     vkEndCommandBuffer(current_command_buffer_.command_buffer);
     VkSubmitInfo submit_info = {};
@@ -423,8 +438,8 @@ private:
     vkFreeMemory(device_, depth_image_memory_, nullptr);
 
     // delete before image views and render pass after rendering finishes
-    for (size_t i = 0; i < swap_chain_framebuffers_.size(); i++) {
-      vkDestroyFramebuffer(device_, swap_chain_framebuffers_[i], nullptr);
+    for (size_t i = 0; i < swapchain_framebuffers_.size(); i++) {
+      vkDestroyFramebuffer(device_, swapchain_framebuffers_[i], nullptr);
     }
 
     // free up the command buffers so we can reuse them
@@ -437,11 +452,11 @@ private:
     vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
     vkDestroyRenderPass(device_, render_pass_, nullptr);
 
-    for (size_t i = 0; i < swap_chain_image_views_.size(); i++) {
-      vkDestroyImageView(device_, swap_chain_image_views_[i], nullptr);
+    for (size_t i = 0; i < swapchain_image_views_.size(); i++) {
+      vkDestroyImageView(device_, swapchain_image_views_[i], nullptr);
     }
 
-    vkDestroySwapchainKHR(device_, swap_chain_, nullptr);
+    vkDestroySwapchainKHR(device_, swapchain_, nullptr);
   }
 
   //---------------------------------------------------------------------------
@@ -499,11 +514,11 @@ private:
     vkDestroyBuffer(device_, uniform_buffer_, nullptr);
     vkFreeMemory(device_, uniform_buffer_memory_, nullptr);
 
-    vkDestroyBuffer(device_, index_buffer_, nullptr);
-    vkFreeMemory(device_, index_buffer_memory_, nullptr);
+    vkDestroyBuffer(device_, companion_screen_index_buffer_, nullptr);
+    vkFreeMemory(device_, companion_screen_index_buffer_memory_, nullptr);
 
-    vkDestroyBuffer(device_, vertex_buffer_, nullptr);
-    vkFreeMemory(device_, vertex_buffer_memory_, nullptr);
+    vkDestroyBuffer(device_, scene_vertex_buffer_, nullptr);
+    vkFreeMemory(device_, scene_vertex_buffer_memory_, nullptr);
 
     vkDestroySemaphore(device_, render_finished_semaphore_, nullptr);
     vkDestroySemaphore(device_, image_available_semaphore_, nullptr);
@@ -747,18 +762,18 @@ private:
     create_info.presentMode = present_mode;
     create_info.clipped = VK_TRUE; // obscured pixels won't be calculated
 
-    if (vkCreateSwapchainKHR(device_, &create_info, nullptr, &swap_chain_) != VK_SUCCESS) {
+    if (vkCreateSwapchainKHR(device_, &create_info, nullptr, &swapchain_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create swap chain");
     }
 
     // retrieving handles just like any other retrieval of array of objects from Vulkan
-    vkGetSwapchainImagesKHR(device_, swap_chain_, &image_count, nullptr);
-    swap_chain_images_.resize(image_count);
-    vkGetSwapchainImagesKHR(device_, swap_chain_, &image_count, swap_chain_images_.data());
+    vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, nullptr);
+    swapchain_images_.resize(image_count);
+    vkGetSwapchainImagesKHR(device_, swapchain_, &image_count, swapchain_images_.data());
 
     // storing format and extent to member variables for future use.
-    swap_chain_image_format_ = surface_format.format;
-    swap_chain_extent_ = extent;
+    swapchain_image_format_ = surface_format.format;
+    swapchain_extent_ = extent;
 
     // Create renderpass
     uint32_t total_attachments = 1;
@@ -767,7 +782,7 @@ private:
     attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; // type of layout for the attachment
 
     VkAttachmentDescription attachment_desc = {};
-    attachment_desc.format = swap_chain_image_format_; // should match the swap chain images
+    attachment_desc.format = swapchain_image_format_; // should match the swap chain images
     attachment_desc.samples = VK_SAMPLE_COUNT_1_BIT;
     attachment_desc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // clearing the framebuffer before drawing a new frame
     attachment_desc.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // rendered contents will be stored in memory and can be read later
@@ -805,16 +820,16 @@ private:
     }
 
     // Create image views
-    swap_chain_image_views_.resize(swap_chain_images_.size());
-    swap_chain_framebuffers_.resize(swap_chain_images_.size());
+    swapchain_image_views_.resize(swapchain_images_.size());
+    swapchain_framebuffers_.resize(swapchain_images_.size());
 
-    for (uint32_t i = 0; i < swap_chain_images_.size(); i++) {
+    for (uint32_t i = 0; i < swapchain_images_.size(); i++) {
       VkImageViewCreateInfo view_info = {};
       view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
       view_info.flags = 0;
-      view_info.image = swap_chain_images_[i];
+      view_info.image = swapchain_images_[i];
       view_info.viewType = VK_IMAGE_VIEW_TYPE_2D; // allows you to treat images as 1D, 2D, 3D textures or cube maps
-      view_info.format = swap_chain_image_format_;
+      view_info.format = swapchain_image_format_;
       view_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
       view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
       view_info.subresourceRange.baseMipLevel = 0;
@@ -822,11 +837,11 @@ private:
       view_info.subresourceRange.baseArrayLayer = 0;
       view_info.subresourceRange.layerCount = 1;
 
-      if (vkCreateImageView(device_, &view_info, nullptr, &swap_chain_image_views_[i]) != VK_SUCCESS) {
+      if (vkCreateImageView(device_, &view_info, nullptr, &swapchain_image_views_[i]) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture image view!");
       }
 
-      VkImageView attachments[1] = { swap_chain_image_views_[i] };
+      VkImageView attachments[1] = { swapchain_image_views_[i] };
       VkFramebufferCreateInfo framebuffer_create_info = {};
       framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
       framebuffer_create_info.renderPass = render_pass_;
@@ -836,7 +851,7 @@ private:
       framebuffer_create_info.height = HEIGHT;
       framebuffer_create_info.layers = 1;
 
-      if (vkCreateFramebuffer(device_, &framebuffer_create_info, nullptr, &swap_chain_framebuffers_[i]) != VK_SUCCESS) {
+      if (vkCreateFramebuffer(device_, &framebuffer_create_info, nullptr, &swapchain_framebuffers_[i]) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create framebuffer!");
       }
 
@@ -927,8 +942,8 @@ private:
     VkViewport viewport = {};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = (float)swap_chain_extent_.width;
-    viewport.height = (float)swap_chain_extent_.height;
+    viewport.width = (float)swapchain_extent_.width;
+    viewport.height = (float)swapchain_extent_.height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
@@ -936,7 +951,7 @@ private:
     // drawing the entire framebuffer so scissors cover it entirely
     VkRect2D scissor = {};
     scissor.offset = { 0, 0 };
-    scissor.extent = swap_chain_extent_;
+    scissor.extent = swapchain_extent_;
 
     // scissor and viewport values go in here
     VkPipelineViewportStateCreateInfo viewport_state = {};
@@ -1058,12 +1073,12 @@ private:
   // Purpose: creating framebuffers for all the swap chain image views
   //---------------------------------------------------------------------------
   void createFramebuffers() {
-    swap_chain_framebuffers_.resize(swap_chain_image_views_.size());
+    swapchain_framebuffers_.resize(swapchain_image_views_.size());
 
     // iterate through the image views and create framebuffers from them
-    for (size_t i = 0; i < swap_chain_image_views_.size(); i++) {
+    for (size_t i = 0; i < swapchain_image_views_.size(); i++) {
       std::array<VkImageView, 2> attachments = {
-        swap_chain_image_views_[i],
+        swapchain_image_views_[i],
         depth_image_view_
       };
 
@@ -1072,11 +1087,11 @@ private:
       framebuffer_info.renderPass = render_pass_;
       framebuffer_info.attachmentCount = static_cast<uint32_t>(attachments.size());
       framebuffer_info.pAttachments = attachments.data();
-      framebuffer_info.width = swap_chain_extent_.width;
-      framebuffer_info.height = swap_chain_extent_.height;
+      framebuffer_info.width = swapchain_extent_.width;
+      framebuffer_info.height = swapchain_extent_.height;
       framebuffer_info.layers = 1;
 
-      if (vkCreateFramebuffer(device_, &framebuffer_info, nullptr, &swap_chain_framebuffers_[i]) != VK_SUCCESS) {
+      if (vkCreateFramebuffer(device_, &framebuffer_info, nullptr, &swapchain_framebuffers_[i]) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create framebuffer!");
       }
     }
@@ -1304,7 +1319,7 @@ private:
     }
 
     // Create the vertex buffer and fill with data
-    createBuffer(vertices_.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer_, vertex_buffer_memory_);
+    createBuffer(vertices_.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_vertex_buffer_, scene_vertex_buffer_memory_);
 
     // Create the constant buffer to hold the per-eye constant buffer data
     for (uint32_t eye = 0; eye < 2; eye++) {
@@ -1348,7 +1363,7 @@ private:
 
     //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer_, vertex_buffer_memory_);
 
-    copyBuffer(staging_buffer, vertex_buffer_, buffer_size);
+    copyBuffer(staging_buffer, scene_vertex_buffer_, buffer_size);
 
     vkDestroyBuffer(device_, staging_buffer, nullptr);
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
@@ -1371,7 +1386,7 @@ private:
 
     //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer_, index_buffer_memory_);
 
-    copyBuffer(staging_buffer, index_buffer_, buffer_size);
+    copyBuffer(staging_buffer, companion_screen_index_buffer_, buffer_size);
 
     vkDestroyBuffer(device_, staging_buffer, nullptr);
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
@@ -1541,7 +1556,7 @@ private:
     UniformBufferObject ubo = {};
     ubo.model = glm::rotate(glm::mat4(), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent_.width / (float)swap_chain_extent_.height, 0.1f, 10.0f);
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapchain_extent_.width / (float)swapchain_extent_.height, 0.1f, 10.0f);
     ubo.proj[1][1] *= -1; // flip the scaling factor of the Y axis in the projection matrix to take into account GLM's OpenGL layout
 
                           // copy data to uniform buffer objects. push constants are an alternative to this and more efficient.
@@ -1559,7 +1574,7 @@ private:
   void drawFrame() {
     // acquire the image from the swap chain
     uint32_t image_index;
-    VkResult result = vkAcquireNextImageKHR(device_, swap_chain_, std::numeric_limits<uint64_t>::max(), image_available_semaphore_, VK_NULL_HANDLE, &image_index);
+    VkResult result = vkAcquireNextImageKHR(device_, swapchain_, std::numeric_limits<uint64_t>::max(), image_available_semaphore_, VK_NULL_HANDLE, &image_index);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
       recreateSwapChain();
@@ -1595,7 +1610,7 @@ private:
     present_info.waitSemaphoreCount = 1;
     present_info.pWaitSemaphores = signal_semaphores;
 
-    VkSwapchainKHR swap_chains[] = { swap_chain_ };
+    VkSwapchainKHR swap_chains[] = { swapchain_ };
     present_info.swapchainCount = 1;
     present_info.pSwapchains = swap_chains;
     present_info.pImageIndices = &image_index;
@@ -2487,135 +2502,187 @@ private:
     //---------------------------//
     //    Create color target    //
     //---------------------------//
-    VkImageCreateInfo imageCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageCreateInfo.extent.width = nWidth;
-    imageCreateInfo.extent.height = nHeight;
-    imageCreateInfo.extent.depth = 1;
-    imageCreateInfo.mipLevels = 1;
-    imageCreateInfo.arrayLayers = 1;
-    imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageCreateInfo.samples = VK_SAMPLE_COUNT_4_BIT;
-    imageCreateInfo.usage = (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    imageCreateInfo.flags = 0;
+    VkImageCreateInfo image_create_info = {};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.extent.width = nWidth;
+    image_create_info.extent.height = nHeight;
+    image_create_info.extent.depth = 1;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.samples = VK_SAMPLE_COUNT_4_BIT;
+    image_create_info.usage = (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    image_create_info.flags = 0;
 
-    vkCreateImage(device_, &imageCreateInfo, nullptr, &framebufferDesc.image);
+    vkCreateImage(device_, &image_create_info, nullptr, &framebufferDesc.image);
 
     VkMemoryRequirements memory_requirements = {};
     vkGetImageMemoryRequirements(device_, framebufferDesc.image, &memory_requirements);
 
-    VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
-    memoryAllocateInfo.allocationSize = memory_requirements.size;
-    findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VkMemoryAllocateInfo memory_allocate_info = {};
+    memory_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocate_info.allocationSize = memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-    vkAllocateMemory(device_, &memoryAllocateInfo, nullptr, &framebufferDesc.device_memory);
+    vkAllocateMemory(device_, &memory_allocate_info, nullptr, &framebufferDesc.device_memory);
 
     vkBindImageMemory(device_, framebufferDesc.image, framebufferDesc.device_memory, 0);
 
-    VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-    imageViewCreateInfo.flags = 0;
-    imageViewCreateInfo.image = framebufferDesc.image;
-    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    imageViewCreateInfo.format = imageCreateInfo.format;
-    imageViewCreateInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
-    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-    imageViewCreateInfo.subresourceRange.levelCount = 1;
-    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    imageViewCreateInfo.subresourceRange.layerCount = 1;
+    VkImageViewCreateInfo image_view_create_info = {};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.flags = 0;
+    image_view_create_info.image = framebufferDesc.image;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.format = image_create_info.format;
+    image_view_create_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
 
-    vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &framebufferDesc.image_view);
+    vkCreateImageView(device_, &image_view_create_info, nullptr, &framebufferDesc.image_view);
 
     //-----------------------------------//
     //    Create depth/stencil target    //
     //-----------------------------------//
-    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageCreateInfo.format = VK_FORMAT_D32_SFLOAT;
-    imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = VK_FORMAT_D32_SFLOAT;
+    image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-    vkCreateImage(device_, &imageCreateInfo, nullptr, &framebufferDesc.depth_stencil_image);
+    vkCreateImage(device_, &image_create_info, nullptr, &framebufferDesc.depth_stencil_image);
 
     vkGetImageMemoryRequirements(device_, framebufferDesc.depth_stencil_image, &memory_requirements);
-
-    memoryAllocateInfo.allocationSize = memory_requirements.size;
-    findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    vkAllocateMemory(device_, &memoryAllocateInfo, nullptr, &framebufferDesc.depth_stencil_device_memory);
-
+    memory_allocate_info.allocationSize = memory_requirements.size;
+    memory_allocate_info.memoryTypeIndex = findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vkAllocateMemory(device_, &memory_allocate_info, nullptr, &framebufferDesc.depth_stencil_device_memory);
     vkBindImageMemory(device_, framebufferDesc.depth_stencil_image, framebufferDesc.depth_stencil_device_memory, 0);
 
-    imageViewCreateInfo.image = framebufferDesc.depth_stencil_image;
-    imageViewCreateInfo.format = imageCreateInfo.format;
-    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-    vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &framebufferDesc.depth_stencil_image_view);
+    image_view_create_info.image = framebufferDesc.depth_stencil_image;
+    image_view_create_info.format = image_create_info.format;
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    vkCreateImageView(device_, &image_view_create_info, nullptr, &framebufferDesc.depth_stencil_image_view);
 
     // Create a renderpass
-    uint32_t nTotalAttachments = 2;
-    VkAttachmentDescription attachmentDescs[2];
-    VkAttachmentReference attachmentReferences[2];
-    attachmentReferences[0].attachment = 0;
-    attachmentReferences[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachmentReferences[1].attachment = 1;
-    attachmentReferences[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    uint32_t total_attachments = 2;
+    VkAttachmentReference attachment_references[2];
+    attachment_references[0].attachment = 0;
+    attachment_references[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachment_references[1].attachment = 1;
+    attachment_references[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-    attachmentDescs[0].format = VK_FORMAT_R8G8B8A8_SRGB;
-    attachmentDescs[0].samples = imageCreateInfo.samples;
-    attachmentDescs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachmentDescs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachmentDescs[0].flags = 0;
+    VkAttachmentDescription attachment_descs[2];
+    attachment_descs[0].format = VK_FORMAT_R8G8B8A8_SRGB;
+    attachment_descs[0].samples = image_create_info.samples;
+    attachment_descs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[0].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachment_descs[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachment_descs[0].flags = 0;
 
-    attachmentDescs[1].format = VK_FORMAT_D32_SFLOAT;
-    attachmentDescs[1].samples = imageCreateInfo.samples;
-    attachmentDescs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentDescs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentDescs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachmentDescs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachmentDescs[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachmentDescs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    attachmentDescs[1].flags = 0;
+    attachment_descs[1].format = VK_FORMAT_D32_SFLOAT;
+    attachment_descs[1].samples = image_create_info.samples;
+    attachment_descs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachment_descs[1].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment_descs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment_descs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment_descs[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachment_descs[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    attachment_descs[1].flags = 0;
 
-    VkSubpassDescription subPassCreateInfo = {};
-    subPassCreateInfo.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subPassCreateInfo.flags = 0;
-    subPassCreateInfo.inputAttachmentCount = 0;
-    subPassCreateInfo.pInputAttachments = NULL;
-    subPassCreateInfo.colorAttachmentCount = 1;
-    subPassCreateInfo.pColorAttachments = &attachmentReferences[0];
-    subPassCreateInfo.pResolveAttachments = NULL;
-    subPassCreateInfo.pDepthStencilAttachment = &attachmentReferences[1];
-    subPassCreateInfo.preserveAttachmentCount = 0;
-    subPassCreateInfo.pPreserveAttachments = NULL;
+    VkSubpassDescription subpass_create_info = {};
+    subpass_create_info.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass_create_info.flags = 0;
+    subpass_create_info.inputAttachmentCount = 0;
+    subpass_create_info.pInputAttachments = NULL;
+    subpass_create_info.colorAttachmentCount = 1;
+    subpass_create_info.pColorAttachments = &attachment_references[0];
+    subpass_create_info.pResolveAttachments = NULL;
+    subpass_create_info.pDepthStencilAttachment = &attachment_references[1];
+    subpass_create_info.preserveAttachmentCount = 0;
+    subpass_create_info.pPreserveAttachments = NULL;
 
-    VkRenderPassCreateInfo renderPassCreateInfo = {};
-    renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassCreateInfo.flags = 0;
-    renderPassCreateInfo.attachmentCount = 2;
-    renderPassCreateInfo.pAttachments = &attachmentDescs[0];
-    renderPassCreateInfo.subpassCount = 1;
-    renderPassCreateInfo.pSubpasses = &subPassCreateInfo;
-    renderPassCreateInfo.dependencyCount = 0;
-    renderPassCreateInfo.pDependencies = NULL;
+    VkRenderPassCreateInfo render_pass_create_info = {};
+    render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_create_info.flags = 0;
+    render_pass_create_info.attachmentCount = 2;
+    render_pass_create_info.pAttachments = &attachment_descs[0];
+    render_pass_create_info.subpassCount = 1;
+    render_pass_create_info.pSubpasses = &subpass_create_info;
+    render_pass_create_info.dependencyCount = 0;
+    render_pass_create_info.pDependencies = NULL;
 
-    vkCreateRenderPass(device_, &renderPassCreateInfo, NULL, &framebufferDesc.render_pass);
+    vkCreateRenderPass(device_, &render_pass_create_info, NULL, &framebufferDesc.render_pass);
 
     // Create the framebuffer
     VkImageView attachments[2] = { framebufferDesc.image_view, framebufferDesc.depth_stencil_image_view };
-    VkFramebufferCreateInfo framebufferCreateInfo = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
-    framebufferCreateInfo.renderPass = framebufferDesc.render_pass;
-    framebufferCreateInfo.attachmentCount = 2;
-    framebufferCreateInfo.pAttachments = &attachments[0];
-    framebufferCreateInfo.width = nWidth;
-    framebufferCreateInfo.height = nHeight;
-    framebufferCreateInfo.layers = 1;
-    vkCreateFramebuffer(device_, &framebufferCreateInfo, NULL, &framebufferDesc.frame_buffer);
+    VkFramebufferCreateInfo framebuffer_create_info = { VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO };
+    framebuffer_create_info.renderPass = framebufferDesc.render_pass;
+    framebuffer_create_info.attachmentCount = 2;
+    framebuffer_create_info.pAttachments = &attachments[0];
+    framebuffer_create_info.width = nWidth;
+    framebuffer_create_info.height = nHeight;
+    framebuffer_create_info.layers = 1;
+    vkCreateFramebuffer(device_, &framebuffer_create_info, NULL, &framebufferDesc.frame_buffer);
 
     framebufferDesc.image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     framebufferDesc.depth_stencil_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: [VR] Create Frame Buffer Descriptions for HMD Eyes
+  //---------------------------------------------------------------------------
+  void setupCompanionWindow() {
+    if (!p_hmd_) {
+      return;
+    }
+
+    std::vector<VertexDataWindow> verts;
+
+    // left eye verts
+    verts.push_back(VertexDataWindow(glm::vec2(-1, -1), glm::vec2(0, 1)));
+    verts.push_back(VertexDataWindow(glm::vec2(0, -1), glm::vec2(1, 1)));
+    verts.push_back(VertexDataWindow(glm::vec2(-1, 1), glm::vec2(0, 0)));
+    verts.push_back(VertexDataWindow(glm::vec2(0, 1), glm::vec2(1, 0)));
+
+    // right eye verts
+    verts.push_back(VertexDataWindow(glm::vec2(0, -1), glm::vec2(0, 1)));
+    verts.push_back(VertexDataWindow(glm::vec2(1, -1), glm::vec2(1, 1)));
+    verts.push_back(VertexDataWindow(glm::vec2(0, 1), glm::vec2(0, 0)));
+    verts.push_back(VertexDataWindow(glm::vec2(1, 1), glm::vec2(1, 0)));
+
+    createBuffer(sizeof(VertexDataWindow) * verts.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, companion_screen_vertex_buffer_, companion_screen_vertex_buffer_memory_);
+
+    uint16_t indices[] = { 0, 1, 3,   0, 3, 2,   4, 5, 7,   4, 7, 6 };
+    companion_window_index_size_ = _countof(indices);
+    createBuffer(sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      companion_screen_index_buffer_, companion_screen_index_buffer_memory_);
+
+    // Transition all of the swapchain images to PRESENT_SRC so they are ready for presentation
+    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
+
+    for (size_t swapchain_image = 0; swapchain_image < swapchain_images_.size(); swapchain_image) {
+      VkImageMemoryBarrier image_memory_barrier = {};
+      image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+      image_memory_barrier.srcAccessMask = 0;
+      image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+      image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+      image_memory_barrier.image = swapchain_images_[swapchain_image];
+      image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+      image_memory_barrier.subresourceRange.baseMipLevel = 0;
+      image_memory_barrier.subresourceRange.levelCount = 1;
+      image_memory_barrier.subresourceRange.baseArrayLayer = 0;
+      image_memory_barrier.subresourceRange.layerCount = 1;
+      image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
+      image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+      vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    }
   }
 };
 
