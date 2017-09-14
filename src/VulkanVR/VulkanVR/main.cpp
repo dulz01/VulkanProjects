@@ -229,11 +229,13 @@ private:
 
   VkSwapchainKHR swapchain_;
   std::vector<VkImage> swapchain_images_; // implicitly created and destroyed
+  uint32_t current_swapchain_image_;
   VkFormat swapchain_image_format_;
   VkExtent2D swapchain_extent_;
   std::vector<VkImageView> swapchain_image_views_;
   std::vector<VkFramebuffer> swapchain_framebuffers_;
   std::vector<VkSemaphore> swapchain_semaphores_;
+  uint32_t frame_index_;
 
   VkRenderPass swapchain_render_pass_;
   VkDescriptorSetLayout descriptor_set_layout_;
@@ -418,8 +420,6 @@ private:
     //createDepthResources();
     //createFramebuffers();
 
-
-
     //createVertexBuffer();
     //createIndexBuffer();
     //createUniformBuffer();
@@ -435,12 +435,13 @@ private:
   // Purpose: 
   //---------------------------------------------------------------------------
   void mainLoop() {
+
+    glfwSetInputMode(companion_window_, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+
     // keeping the application running until an error...
     // ... or the window is closed
     while (!glfwWindowShouldClose(companion_window_)) {
       glfwPollEvents();
-
-      //updateUniformBuffer();
       //drawFrame();
     }
 
@@ -1807,62 +1808,140 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: acquire an image from the swap chain,...
   // ...execute the command buffer with that image as attachment in the framebuffer,...
+  // ...return the image to the swapchain for presentation (LEGACY)
+  //---------------------------------------------------------------------------
+  //void drawFrame() {
+  //  // acquire the image from the swap chain
+  //  uint32_t image_index;
+  //  VkResult result = vkAcquireNextImageKHR(device_, swapchain_, std::numeric_limits<uint64_t>::max(), image_available_semaphore_, VK_NULL_HANDLE, &image_index);
+
+  //  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+  //    recreateSwapChain();
+  //    return;
+  //  }
+  //  else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+  //    throw std::runtime_error("Failed to acquire swap chain image!");
+  //  }
+
+  //  // execute the command buffer
+  //  VkSubmitInfo submit_info = {};
+  //  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+  //  VkSemaphore wait_semaphores[] = { image_available_semaphore_ }; // setting which semaphore to wait for
+  //  VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }; // which stage of the pipeline to wait
+  //  submit_info.waitSemaphoreCount = 1;
+  //  submit_info.pWaitSemaphores = wait_semaphores;
+  //  submit_info.pWaitDstStageMask = wait_stages;
+  //  submit_info.commandBufferCount = 1;
+  //  //submit_info.pCommandBuffers = &command_buffers_[image_index];
+
+  //  VkSemaphore signal_semaphores[] = { render_finished_semaphore_ };
+  //  submit_info.signalSemaphoreCount = 1;
+  //  submit_info.pSignalSemaphores = signal_semaphores;
+
+  //  if (vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to submit draw command buffer!");
+  //  }
+
+  //  // sending the result back to the swap chain
+  //  VkPresentInfoKHR present_info = {};
+  //  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  //  present_info.waitSemaphoreCount = 1;
+  //  present_info.pWaitSemaphores = signal_semaphores;
+
+  //  VkSwapchainKHR swap_chains[] = { swapchain_ };
+  //  present_info.swapchainCount = 1;
+  //  present_info.pSwapchains = swap_chains;
+  //  present_info.pImageIndices = &image_index;
+
+  //  result = vkQueuePresentKHR(present_queue_, &present_info);
+
+  //  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+  //    recreateSwapChain();
+  //  }
+  //  else if (result != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to present swap chain image!");
+  //  }
+
+  //  vkQueueWaitIdle(present_queue_);
+  //}
+
+
+  //---------------------------------------------------------------------------
+  // Purpose: acquire an image from the swap chain,...
+  // ...execute the command buffer with that image as attachment in the framebuffer,...
   // ...return the image to the swapchain for presentation
   //---------------------------------------------------------------------------
   void drawFrame() {
-    // acquire the image from the swap chain
-    uint32_t image_index;
-    VkResult result = vkAcquireNextImageKHR(device_, swapchain_, std::numeric_limits<uint64_t>::max(), image_available_semaphore_, VK_NULL_HANDLE, &image_index);
+    if (p_hmd_) {
+      current_command_buffer_ = getCommandBuffer();
 
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-      recreateSwapChain();
-      return;
+      // start the command buffer
+      VkCommandBufferBeginInfo command_buffer_begin_info = {};
+      command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+      command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+      vkBeginCommandBuffer(current_command_buffer_.command_buffer, &command_buffer_begin_info);
+
+      // renderStereoTargets();
+      // renderCompanionWindow();
+
+      // end the command buffer
+      vkEndCommandBuffer(current_command_buffer_.command_buffer);
+
+      // submit the command buffer
+      VkPipelineStageFlags wait_dst_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+      VkSubmitInfo submit_info = {};
+      submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+      submit_info.commandBufferCount = 1;
+      submit_info.pCommandBuffers = &current_command_buffer_.command_buffer;
+      submit_info.waitSemaphoreCount = 1;
+      submit_info.pWaitSemaphores = &swapchain_semaphores_[frame_index_];
+      submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
+      vkQueueSubmit(graphics_queue_, 1, &submit_info, current_command_buffer_.fence);
+
+      // Add the command buffer back for later recycling
+      command_buffers_.push_front(current_command_buffer_);
+
+      // Submit to SteamVR
+      vr::VRTextureBounds_t bounds;
+      bounds.uMin = 0.0f;
+      bounds.uMax = 1.0f;
+      bounds.vMin = 0.0f;
+      bounds.vMax = 1.0f;
+
+      vr::VRVulkanTextureData_t vulkan_data;
+      vulkan_data.m_nImage = (uint64_t)left_eye_desc_.image;
+      vulkan_data.m_pDevice = (VkDevice_T *)device_;
+      vulkan_data.m_pPhysicalDevice = (VkPhysicalDevice_T *)physical_device_;
+      vulkan_data.m_pInstance = (VkInstance_T *)instance_;
+      vulkan_data.m_pQueue = (VkQueue_T *)graphics_queue_;
+
+      QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
+
+      vulkan_data.m_nQueueFamilyIndex = queue_family_indices.graphics_family;
+
+      vulkan_data.m_nWidth = render_width_;
+      vulkan_data.m_nHeight = render_height_;
+      vulkan_data.m_nFormat = VK_FORMAT_R8G8B8A8_SRGB;
+      vulkan_data.m_nSampleCount = 4;
+
+      vr::Texture_t texture = { &vulkan_data, vr::TextureType_Vulkan, vr::ColorSpace_Auto };
+      vr::VRCompositor()->Submit(vr::Eye_Left, &texture, &bounds);
+
+      vulkan_data.m_nImage = (uint64_t)right_eye_desc_.image;
+      vr::VRCompositor()->Submit(vr::Eye_Right, &texture, &bounds);
     }
-    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-      throw std::runtime_error("Failed to acquire swap chain image!");
-    }
-
-    // execute the command buffer
-    VkSubmitInfo submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore wait_semaphores[] = { image_available_semaphore_ }; // setting which semaphore to wait for
-    VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }; // which stage of the pipeline to wait
-    submit_info.waitSemaphoreCount = 1;
-    submit_info.pWaitSemaphores = wait_semaphores;
-    submit_info.pWaitDstStageMask = wait_stages;
-    submit_info.commandBufferCount = 1;
-    //submit_info.pCommandBuffers = &command_buffers_[image_index];
-
-    VkSemaphore signal_semaphores[] = { render_finished_semaphore_ };
-    submit_info.signalSemaphoreCount = 1;
-    submit_info.pSignalSemaphores = signal_semaphores;
-
-    if (vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to submit draw command buffer!");
-    }
-
-    // sending the result back to the swap chain
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    present_info.waitSemaphoreCount = 1;
-    present_info.pWaitSemaphores = signal_semaphores;
-
-    VkSwapchainKHR swap_chains[] = { swapchain_ };
+    present_info.pNext = NULL;
     present_info.swapchainCount = 1;
-    present_info.pSwapchains = swap_chains;
-    present_info.pImageIndices = &image_index;
+    present_info.pSwapchains = &swapchain_;
+    present_info.pImageIndices = &current_swapchain_image_;
+    vkQueuePresentKHR(graphics_queue_, &present_info);
 
-    result = vkQueuePresentKHR(present_queue_, &present_info);
+    // UpdateHMDMatrixPose();
 
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-      recreateSwapChain();
-    }
-    else if (result != VK_SUCCESS) {
-      throw std::runtime_error("Failed to present swap chain image!");
-    }
-
-    vkQueueWaitIdle(present_queue_);
+    frame_index_ = (frame_index_ + 1) % swapchain_images_.size();
   }
 
   //-------------------------------------------------------------------------//
