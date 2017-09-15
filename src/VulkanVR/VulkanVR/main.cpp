@@ -33,6 +33,13 @@ const std::string TEXTURE_PATH = "textures/chalet.jpg";
 //-----------------------------------------------------------------------------
 // Purpose: shows which validation layers are required
 //-----------------------------------------------------------------------------
+// "VK_LAYER_LUNARG_standard_validation"
+//"VK_LAYER_GOOGLE_threading",
+//"VK_LAYER_LUNARG_parameter_validation",
+//"VK_LAYER_LUNARG_object_tracker",
+//"VK_LAYER_LUNARG_image",
+//"VK_LAYER_LUNARG_core_validation",
+//"VK_LAYER_LUNARG_swapchain"
 const std::vector<const char*> validation_layers = {
   "VK_LAYER_LUNARG_standard_validation"
 };
@@ -213,37 +220,36 @@ enum DescriptorSetIndex_t {
 //-----------------------------------------------------------------------------
 class VulkanVRApplication {
 public:
-  VulkanVRApplication() 
-  : companion_window_(NULL)
-  , companion_window_width_(640)
-  , companion_window_height_(320)
-  , hmd_(NULL)
-  , valid_pose_count_(0)
-  , instance_(VK_NULL_HANDLE)
-  , device_(VK_NULL_HANDLE)
-  , physical_device_(VK_NULL_HANDLE)
-  , queue_(VK_NULL_HANDLE)
-  , surface_(VK_NULL_HANDLE)
-  , swapchain_(VK_NULL_HANDLE)
-  , command_pool_(VK_NULL_HANDLE)
-  , descriptor_pool_(VK_NULL_HANDLE)
-  , str_pose_classes_("")
-  , frame_index_(0)
-  , current_swapchain_image_(0)
-  , scene_vertex_buffer_(VK_NULL_HANDLE)
-  , scene_vertex_buffer_memory_(VK_NULL_HANDLE)
-  , scene_image_(VK_NULL_HANDLE)
-  , scene_image_memory_(VK_NULL_HANDLE)
-  , scene_image_view_(VK_NULL_HANDLE)
-  , scene_sampler_(VK_NULL_HANDLE)
-  , descriptor_set_layout_(VK_NULL_HANDLE)
-  , pipeline_layout_(VK_NULL_HANDLE)
-  , pipeline_cache_(VK_NULL_HANDLE)
-  , companion_window_vertex_buffer_(VK_NULL_HANDLE)
-  , companion_window_vertex_buffer_memory_(VK_NULL_HANDLE)
-  , companion_window_index_buffer_(VK_NULL_HANDLE)
-  , companion_window_index_buffer_memory_(VK_NULL_HANDLE)
-  {
+  VulkanVRApplication()
+    : companion_window_(NULL)
+    , companion_window_width_(640)
+    , companion_window_height_(320)
+    , hmd_(NULL)
+    , valid_pose_count_(0)
+    , instance_(VK_NULL_HANDLE)
+    , device_(VK_NULL_HANDLE)
+    , physical_device_(VK_NULL_HANDLE)
+    , queue_(VK_NULL_HANDLE)
+    , surface_(VK_NULL_HANDLE)
+    , swapchain_(VK_NULL_HANDLE)
+    , command_pool_(VK_NULL_HANDLE)
+    , descriptor_pool_(VK_NULL_HANDLE)
+    , str_pose_classes_("")
+    , frame_index_(0)
+    , current_swapchain_image_(0)
+    , scene_vertex_buffer_(VK_NULL_HANDLE)
+    , scene_vertex_buffer_memory_(VK_NULL_HANDLE)
+    , scene_image_(VK_NULL_HANDLE)
+    , scene_image_memory_(VK_NULL_HANDLE)
+    , scene_image_view_(VK_NULL_HANDLE)
+    , scene_sampler_(VK_NULL_HANDLE)
+    , descriptor_set_layout_(VK_NULL_HANDLE)
+    , pipeline_layout_(VK_NULL_HANDLE)
+    , pipeline_cache_(VK_NULL_HANDLE)
+    , companion_window_vertex_buffer_(VK_NULL_HANDLE)
+    , companion_window_vertex_buffer_memory_(VK_NULL_HANDLE)
+    , companion_window_index_buffer_(VK_NULL_HANDLE)
+    , companion_window_index_buffer_memory_(VK_NULL_HANDLE) {
     memset(&left_eye_desc_, 0, sizeof(left_eye_desc_));
     memset(&right_eye_desc_, 0, sizeof(right_eye_desc_));
     memset(&shader_modules_[0], 0, sizeof(shader_modules_));
@@ -281,6 +287,7 @@ private:
   VkPhysicalDeviceProperties physical_device_properties;
   VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
   VkPhysicalDeviceFeatures physical_device_features;
+  uint32_t queue_family_index_;
 
   VkDevice device_;
 
@@ -308,7 +315,7 @@ private:
   std::vector<Vertex> vertices_;
   unsigned int vert_count_;
 
-  
+
 
   VkDescriptorPool descriptor_pool_;
   VkDescriptorSet descriptor_sets_[NUM_DESCRIPTOR_SETS];
@@ -376,7 +383,7 @@ private:
 
     VertexDataWindow(const Vector2 &pos, const Vector2 tex) : position(pos), tex_coord(tex) {}
   };
-  
+
 
   struct VertexDataScene {
     Vector3 position;
@@ -395,9 +402,6 @@ private:
     //---------//
     // VR code //
     //---------//
-    current_command_buffer_ = {};
-    memset(&left_eye_desc_, 0, sizeof(left_eye_desc_));
-    memset(&right_eye_desc_, 0, sizeof(right_eye_desc_));
     vr::EVRInitError e_error = vr::VRInitError_None;
     hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
     if (e_error != vr::VRInitError_None) {
@@ -407,9 +411,8 @@ private:
 
     near_clip_ = 0.1f;
     far_clip_ = 30.0f;
-
+    vert_count_ = 0;
     companion_window_index_size_ = 0;
-    frame_index_ = 0;
     //----------------//
     // End of VR code //
     //----------------//
@@ -653,25 +656,33 @@ private:
     vkGetPhysicalDeviceFeatures(physical_device_, &physical_device_features);
 
     // Logical device creation
-    QueueFamilyIndices indices = findQueueFamilies(physical_device_);
+    //QueueFamilyIndices indices = findQueueFamilies(physical_device_);
+    QueueFamilyIndices indices;
 
-    std::vector<VkDeviceQueueCreateInfo> queue_create_infos;
-    std::set<int> unique_queue_families = { indices.graphics_family, indices.present_family };
+    uint32_t queue_family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, nullptr);
 
-    // Vulkan lets you assign priorities to queues to influence scheduling...
-    // ...of the command buffer execution.
-    // between floating point numbers 0.0 and 1.0
-    // required, even if there's a single queue
-    float queue_priority = 1.0f;
-    for (int queue_family : unique_queue_families) {
-      // this struct describes the number of queues we want for a single queue family
-      VkDeviceQueueCreateInfo queue_create_info = {};
-      queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-      queue_create_info.queueFamilyIndex = queue_family;
-      queue_create_info.queueCount = 1;
-      queue_create_info.pQueuePriorities = &queue_priority;
-      queue_create_infos.push_back(queue_create_info);
+    std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count, queue_families.data());
+
+    // check if the queue family has the required operations
+    uint32_t i = 0;
+    for (i = 0; i < queue_family_count; i++) {
+      if (queue_families[i].queueCount > 0 && queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+        break;
+      }
     }
+    if (i >= queue_family_count) {
+      throw std::runtime_error("No graphics queue found");
+    }
+    queue_family_index_ = i;
+
+    VkDeviceQueueCreateInfo device_queue_create_info = {};
+    device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    device_queue_create_info.queueFamilyIndex = queue_family_index_;
+    device_queue_create_info.queueCount = 1;
+    float queue_priority = 1.0f;
+    device_queue_create_info.pQueuePriorities = &queue_priority;
 
     // specifying what set of device features we'll be using
     VkPhysicalDeviceFeatures device_features = {};
@@ -680,8 +691,8 @@ private:
     // creating the logical device
     VkDeviceCreateInfo create_info = {};
     create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
-    create_info.pQueueCreateInfos = queue_create_infos.data();
+    create_info.queueCreateInfoCount = 1;
+    create_info.pQueueCreateInfos = &device_queue_create_info;
     create_info.pEnabledFeatures = &device_features;
     create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
     create_info.ppEnabledExtensionNames = device_extensions.data();
@@ -700,8 +711,7 @@ private:
     }
 
     // retrieving the queue handles for each queue family
-    vkGetDeviceQueue(device_, indices.graphics_family, 0, &queue_);
-    vkGetDeviceQueue(device_, indices.present_family, 0, &present_queue_);
+    vkGetDeviceQueue(device_, queue_family_index_, 0, &queue_);
   }
 
   //---------------------------------------------------------------------------
@@ -734,27 +744,9 @@ private:
     swapchain_create_info.imageExtent = extent;
     swapchain_create_info.imageArrayLayers = 1; // always set to 1 unless developing stereoscopic 3D application
     swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;  // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
-
-    // specifying how to handle swap chain images across multiple queue families
-    QueueFamilyIndices indices = findQueueFamilies(physical_device_);
-
-    // specifying which queue families are sharing images in VK_SHARING_MODE_CONCURRENT 
-    uint32_t queue_family_indices[] = { (uint32_t)indices.graphics_family, (uint32_t)indices.present_family };
-
-    // VK_SHARING_MODE_CONCURRENT allows images to be shared among multiple queue families
-    if (indices.graphics_family != indices.present_family) {
-      swapchain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-      swapchain_create_info.queueFamilyIndexCount = 2;
-      swapchain_create_info.pQueueFamilyIndices = queue_family_indices;
-    }
-
-    // VK_SHARING_MODE_EXCLUSIVE makes it so an image has to be explicitly transferred from one queue family to another
-    else {
-      swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-      swapchain_create_info.queueFamilyIndexCount = 0;
-      swapchain_create_info.pQueueFamilyIndices = NULL;
-    }
-
+    swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swapchain_create_info.queueFamilyIndexCount = 0;
+    swapchain_create_info.pQueueFamilyIndices = NULL;
     swapchain_create_info.preTransform = swap_chain_support.capabilities.currentTransform; // transforms applied to images in the swap chain
     swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // almost always want to ignore the alpha channel
     swapchain_create_info.presentMode = present_mode;
@@ -1114,11 +1106,9 @@ private:
   // Purpose: create a command pool that manages buffers
   //---------------------------------------------------------------------------
   void createCommandPool() {
-    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
-
     VkCommandPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.queueFamilyIndex = queue_family_indices.graphics_family;
+    pool_info.queueFamilyIndex = queue_family_index_;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     if (vkCreateCommandPool(device_, &pool_info, nullptr, &command_pool_) != VK_SUCCESS) {
@@ -1182,38 +1172,26 @@ private:
     vkBindImageMemory(device_, scene_image_, scene_image_memory_, 0);
 
     // Create the image view
-    VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
-    imageViewCreateInfo.flags = 0;
-    imageViewCreateInfo.image = scene_image_;
-    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    imageViewCreateInfo.format = image_create_info.format;
-    imageViewCreateInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
-    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
-    imageViewCreateInfo.subresourceRange.levelCount = image_create_info.mipLevels;
-    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    imageViewCreateInfo.subresourceRange.layerCount = 1;
-    vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &scene_image_view_);
+    VkImageViewCreateInfo image_view_create_info = {};
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.flags = 0;
+    image_view_create_info.image = scene_image_;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.format = image_create_info.format;
+    image_view_create_info.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = image_create_info.mipLevels;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+    vkCreateImageView(device_, &image_view_create_info, nullptr, &scene_image_view_);
 
     // Create a staging buffer
     VkBuffer staging_buffer;
     VkDeviceMemory staging_buffer_memory;
-    createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-
-    void* data;
-    vkMapMemory(device_, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(buffer_size));
-    vkUnmapMemory(device_, staging_buffer_memory);
-
-    VkMappedMemoryRange memory_range = {};
-    memory_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-    memory_range.memory = staging_buffer_memory;
-    memory_range.size = VK_WHOLE_SIZE;
-    vkFlushMappedMemoryRanges(device_, 1, &memory_range);
+    createAndFillBuffer(pixels, buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, staging_buffer, staging_buffer_memory);
 
     // Transition the image to TRANSFER_DST to receive image
-    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
-
     VkImageMemoryBarrier image_memory_barrier = {};
     image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     image_memory_barrier.srcAccessMask = 0;
@@ -1223,11 +1201,12 @@ private:
     image_memory_barrier.image = scene_image_;
     image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     image_memory_barrier.subresourceRange.baseMipLevel = 0;
-    image_memory_barrier.subresourceRange.levelCount = (uint32_t)buffer_image_copies.size();
+    image_memory_barrier.subresourceRange.levelCount = image_create_info.mipLevels;
     image_memory_barrier.subresourceRange.baseArrayLayer = 0;
     image_memory_barrier.subresourceRange.layerCount = 1;
-    image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
-    image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+    image_memory_barrier.srcQueueFamilyIndex = queue_family_index_;
+    image_memory_barrier.dstQueueFamilyIndex = queue_family_index_;
+    //vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
 
     // Issue the copy to fill the image data
@@ -1254,7 +1233,6 @@ private:
     sampler_create_info.maxLod = 0.0f;
     vkCreateSampler(device_, &sampler_create_info, nullptr, &scene_sampler_);
 
-    //delete[] p_buffer;
     stbi_image_free(pixels);
   }
 
@@ -1299,7 +1277,7 @@ private:
     vert_count_ = vertices_.size();
 
     // Create the vertex buffer and fill with data
-    createBuffer(vert_count_ * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_vertex_buffer_, scene_vertex_buffer_memory_);
+    createAndFillBuffer(&vertices_[0], vert_count_ * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, scene_vertex_buffer_, scene_vertex_buffer_memory_);
 
     // Create the constant buffer to hold the per-eye constant buffer data
     for (uint32_t eye = 0; eye < 2; eye++) {
@@ -1462,9 +1440,7 @@ private:
       vulkan_data.m_pInstance = (VkInstance_T *)instance_;
       vulkan_data.m_pQueue = (VkQueue_T *)queue_;
 
-      QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
-
-      vulkan_data.m_nQueueFamilyIndex = queue_family_indices.graphics_family;
+      vulkan_data.m_nQueueFamilyIndex = queue_family_index_;
 
       vulkan_data.m_nWidth = render_width_;
       vulkan_data.m_nHeight = render_height_;
@@ -1503,8 +1479,6 @@ private:
     //----------//
     // Left Eye //
     //----------//
-    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
-
     //Transition eye image to VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
     VkImageMemoryBarrier image_memory_barrier = {};
     image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1518,8 +1492,8 @@ private:
     image_memory_barrier.subresourceRange.levelCount = 1;
     image_memory_barrier.subresourceRange.baseArrayLayer = 0;
     image_memory_barrier.subresourceRange.layerCount = 1;
-    image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
-    image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+    image_memory_barrier.srcQueueFamilyIndex = queue_family_index_;
+    image_memory_barrier.dstQueueFamilyIndex = queue_family_index_;
     vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     left_eye_desc_.image_layout = image_memory_barrier.newLayout;
 
@@ -1556,7 +1530,7 @@ private:
     render_pass_begin_info.pClearValues = &clear_values[0];
     vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    //RenderScene(vr::Eye_Left); // TODO
+    renderScene(vr::Eye_Left); // TODO
 
     vkCmdEndRenderPass(current_command_buffer_.command_buffer);
 
@@ -1601,7 +1575,7 @@ private:
     render_pass_begin_info.pClearValues = &clear_values[0];
     vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    // RenderScene(vr::Eye_Right); // TODO
+    renderScene(vr::Eye_Right); // TODO
 
     vkCmdEndRenderPass(current_command_buffer_.command_buffer);
 
@@ -1624,8 +1598,6 @@ private:
       return;
     }
 
-    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
-
     // Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL for rendering
     VkImageMemoryBarrier image_memory_barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
     image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -1638,8 +1610,8 @@ private:
     image_memory_barrier.subresourceRange.levelCount = 1;
     image_memory_barrier.subresourceRange.baseArrayLayer = 0;
     image_memory_barrier.subresourceRange.layerCount = 1;
-    image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
-    image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+    image_memory_barrier.srcQueueFamilyIndex = queue_family_index_;
+    image_memory_barrier.dstQueueFamilyIndex = queue_family_index_;
     vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
 
     // Start the renderpass
@@ -1742,33 +1714,20 @@ private:
   // Purpose: Rendering the scene with respect to the eye position
   //---------------------------------------------------------------------------
   void renderScene(vr::Hmd_Eye nEye) {
-      vkCmdBindPipeline(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[PSO_SCENE]);
+    vkCmdBindPipeline(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[PSO_SCENE]);
 
-      // Update the persistently mapped pointer to the CB data with the latest matrix
-      memcpy(scene_constant_buffer_data_[nEye], getCurrentViewProjectionMatrix(nEye).get(), sizeof(Matrix4));
+    // Update the persistently mapped pointer to the CB data with the latest matrix
+    memcpy(scene_constant_buffer_data_[nEye], getCurrentViewProjectionMatrix(nEye).get(), sizeof(Matrix4));
 
-      vkCmdBindDescriptorSets(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + nEye], 0, nullptr);
+    vkCmdBindDescriptorSets(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + nEye], 0, nullptr);
 
-      // Draw
-      VkDeviceSize nOffsets[1] = { 0 };
-      vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &scene_vertex_buffer_, &nOffsets[0]);
-      vkCmdDraw(current_command_buffer_.command_buffer, vert_count_, 1, 0, 0);
+    // Draw
+    VkDeviceSize nOffsets[1] = { 0 };
+    vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &scene_vertex_buffer_, &nOffsets[0]);
+    vkCmdDraw(current_command_buffer_.command_buffer, vert_count_, 1, 0, 0);
   }
 
-  //---------------------------------------------------------------------------
-  // Purpose: 
-  //---------------------------------------------------------------------------
-  Matrix4 getCurrentViewProjectionMatrix(vr::Hmd_Eye eye) {
-    Matrix4 mat4MVP;
-    if (eye == vr::Eye_Left) {
-      mat4MVP = mat4_proj_left_ * mat4_eye_pos_left_ * mat4_hmd_pose_;
-    }
-    else if (eye == vr::Eye_Right) {
-      mat4MVP = mat4_proj_right_ * mat4_eye_pos_right_ *  mat4_hmd_pose_;
-    }
 
-    return mat4MVP;
-  }
 
   //-------------------------------------------------------------------------//
   //-------------------------------------------------------------------------//
@@ -1968,40 +1927,9 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: helper function to create buffers (LEGACY)
+  // Purpose: helper function to create buffers
   //---------------------------------------------------------------------------
-  //void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
-  //  // create buffer
-  //  VkBufferCreateInfo buffer_info = {};
-  //  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  //  buffer_info.size = size; // buffer size in bytes
-  //  buffer_info.usage = usage;
-
-  //  if (vkCreateBuffer(device_, &buffer_info, nullptr, &buffer) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to create buffer!");
-  //  }
-
-  //  // assign memory to buffer
-  //  VkMemoryRequirements mem_requirements;
-  //  vkGetBufferMemoryRequirements(device_, buffer, &mem_requirements);
-
-  //  VkMemoryAllocateInfo alloc_info = {};
-  //  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  //  alloc_info.allocationSize = mem_requirements.size;
-  //  alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
-
-  //  if (vkAllocateMemory(device_, &alloc_info, nullptr, &buffer_memory) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to allocate buffer memory!");
-  //  }
-
-  //  // associate memory with the buffer if allocation was successful
-  //  vkBindBufferMemory(device_, buffer, buffer_memory, 0);
-  //}
-
-  //---------------------------------------------------------------------------
-  // Purpose: helper function to create buffers (ALTER)
-  //---------------------------------------------------------------------------
-  void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
+  void createAndFillBuffer(const void *buffer_data, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& buffer_memory) {
     // create buffer
     VkBufferCreateInfo buffer_info = {};
     buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -2027,47 +1955,23 @@ private:
 
     // associate memory with the buffer if allocation was successful
     vkBindBufferMemory(device_, buffer, buffer_memory, 0);
-  }
-  
-  //---------------------------------------------------------------------------
-  // Purpose: create an image object (LEGACY)
-  //---------------------------------------------------------------------------
-  void createImage(uint32_t width, uint32_t height, uint32_t mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& image_memory) {
-    VkImageCreateInfo image_info = {};
-    image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    image_info.imageType = VK_IMAGE_TYPE_2D;
-    image_info.extent.width = width;
-    image_info.extent.height = height;
-    image_info.extent.depth = 1;
-    image_info.mipLevels = mip_levels;
-    image_info.arrayLayers = 1;
-    image_info.format = format;
-    image_info.tiling = tiling;
-    image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-    image_info.usage = usage;
-    image_info.flags = 0;
 
-    if (vkCreateImage(device_, &image_info, nullptr, &image) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create image!");
+    if (buffer_data != nullptr) {
+      void *data;
+      vkMapMemory(device_, buffer_memory, 0, VK_WHOLE_SIZE, 0, &data);
+      memcpy(data, buffer_data, size);
+      vkUnmapMemory(device_, buffer_memory);
+
+      VkMappedMemoryRange memory_range = {};
+      memory_range.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
+      memory_range.memory = buffer_memory;
+      memory_range.size = VK_WHOLE_SIZE;
+      vkFlushMappedMemoryRanges(device_, 1, &memory_range);
     }
-
-    VkMemoryRequirements mem_requirements;
-    vkGetImageMemoryRequirements(device_, image, &mem_requirements);
-
-    VkMemoryAllocateInfo alloc_info = {};
-    alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    alloc_info.allocationSize = mem_requirements.size;
-    alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(device_, &alloc_info, nullptr, &image_memory) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to allocate image memory!");
-    }
-
-    vkBindImageMemory(device_, image, image_memory, 0);
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: create an image view (ALTER)
+  // Purpose: create an image view
   //---------------------------------------------------------------------------
   VkImageView createImageView(VkImage image, VkImageView image_view, VkFormat format, VkImageAspectFlags aspect_flags) {
     VkImageViewCreateInfo view_info = {};
@@ -2359,64 +2263,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: setting the image layout
-  //---------------------------------------------------------------------------
-  void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
-    VkCommandBuffer command_buffer = beginSingleTimeCommands();
-
-    VkImageMemoryBarrier barrier = {};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = old_layout;
-    barrier.newLayout = new_layout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-
-    if (new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-      barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-      if (hasStencilComponent(format)) {
-        barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-      }
-    }
-    else {
-      barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-
-    if (old_layout == VK_IMAGE_LAYOUT_PREINITIALIZED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-      barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-      barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    }
-    else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-      barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-      barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    }
-    else if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-      barrier.srcAccessMask = 0;
-      barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    }
-    else {
-      throw std::invalid_argument("Unsupported layout transition!");
-    }
-
-    vkCmdPipelineBarrier(
-      command_buffer,
-      VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-      0,
-      0, nullptr,
-      0, nullptr,
-      1, &barrier
-    );
-
-    endSingleTimeCommands(command_buffer);
-  }
-
-  //---------------------------------------------------------------------------
   // Purpose: populates SwapChainSupportDetails struct
   //---------------------------------------------------------------------------
   SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
@@ -2521,6 +2367,21 @@ private:
         pDst[(y * (*pDstWidthOut) + x) * 4 + 3] = (uint8_t)(a);
       }
     }
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: Get updated HMD pose 
+  //---------------------------------------------------------------------------
+  Matrix4 getCurrentViewProjectionMatrix(vr::Hmd_Eye eye) {
+    Matrix4 mat4MVP;
+    if (eye == vr::Eye_Left) {
+      mat4MVP = mat4_proj_left_ * mat4_eye_pos_left_ * mat4_hmd_pose_;
+    }
+    else if (eye == vr::Eye_Right) {
+      mat4MVP = mat4_proj_right_ * mat4_eye_pos_right_ *  mat4_hmd_pose_;
+    }
+
+    return mat4MVP;
   }
 
   //---------------------------------------------------------------------------
@@ -2726,7 +2587,7 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: [VR] Create Frame Buffer Descriptions for HMD Eyes
+  // Purpose: [VR] Set up the companion window
   //---------------------------------------------------------------------------
   void setupCompanionWindow() {
     if (!hmd_) {
@@ -2747,17 +2608,15 @@ private:
     verts.push_back(VertexDataWindow(Vector2(0, 1), Vector2(0, 0)));
     verts.push_back(VertexDataWindow(Vector2(1, 1), Vector2(1, 0)));
 
-    createBuffer(sizeof(VertexDataWindow) * verts.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, companion_window_vertex_buffer_, companion_window_vertex_buffer_memory_);
+    createAndFillBuffer(&verts[0], sizeof(VertexDataWindow) * verts.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, companion_window_vertex_buffer_, companion_window_vertex_buffer_memory_);
 
     uint16_t indices[] = { 0, 1, 3,   0, 3, 2,   4, 5, 7,   4, 7, 6 };
     companion_window_index_size_ = _countof(indices);
-    createBuffer(sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    createAndFillBuffer(&indices[0], sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
       companion_window_index_buffer_, companion_window_index_buffer_memory_);
 
     // Transition all of the swapchain images to PRESENT_SRC so they are ready for presentation
-    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
-
     for (size_t swapchain_image = 0; swapchain_image < swapchain_images_.size(); swapchain_image++) {
       VkImageMemoryBarrier image_memory_barrier = {};
       image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -2771,8 +2630,8 @@ private:
       image_memory_barrier.subresourceRange.levelCount = 1;
       image_memory_barrier.subresourceRange.baseArrayLayer = 0;
       image_memory_barrier.subresourceRange.layerCount = 1;
-      image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
-      image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+      image_memory_barrier.srcQueueFamilyIndex = queue_family_index_;
+      image_memory_barrier.dstQueueFamilyIndex = queue_family_index_;
       vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
     }
   }
