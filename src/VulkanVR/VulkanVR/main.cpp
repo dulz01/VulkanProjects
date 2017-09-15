@@ -23,10 +23,8 @@
 #include <array>
 #include <set>
 #include <unordered_map>
-#include "Matrices.h"
 
-const int WIDTH = 640;
-const int HEIGHT = 320;
+#include "Matrices.h"
 
 // path to model and texture
 const std::string MODEL_PATH = "models/chalet.obj";
@@ -215,7 +213,44 @@ enum DescriptorSetIndex_t {
 //-----------------------------------------------------------------------------
 class VulkanVRApplication {
 public:
-  VulkanVRApplication() {}
+  VulkanVRApplication() 
+  : companion_window_(NULL)
+  , companion_window_width_(640)
+  , companion_window_height_(320)
+  , hmd_(NULL)
+  , valid_pose_count_(0)
+  , instance_(VK_NULL_HANDLE)
+  , device_(VK_NULL_HANDLE)
+  , physical_device_(VK_NULL_HANDLE)
+  , queue_(VK_NULL_HANDLE)
+  , surface_(VK_NULL_HANDLE)
+  , swapchain_(VK_NULL_HANDLE)
+  , command_pool_(VK_NULL_HANDLE)
+  , descriptor_pool_(VK_NULL_HANDLE)
+  , str_pose_classes_("")
+  , frame_index_(0)
+  , current_swapchain_image_(0)
+  , scene_vertex_buffer_(VK_NULL_HANDLE)
+  , scene_vertex_buffer_memory_(VK_NULL_HANDLE)
+  , scene_image_(VK_NULL_HANDLE)
+  , scene_image_memory_(VK_NULL_HANDLE)
+  , scene_image_view_(VK_NULL_HANDLE)
+  , scene_sampler_(VK_NULL_HANDLE)
+  , descriptor_set_layout_(VK_NULL_HANDLE)
+  , pipeline_layout_(VK_NULL_HANDLE)
+  , pipeline_cache_(VK_NULL_HANDLE)
+  , companion_window_vertex_buffer_(VK_NULL_HANDLE)
+  , companion_window_vertex_buffer_memory_(VK_NULL_HANDLE)
+  , companion_window_index_buffer_(VK_NULL_HANDLE)
+  , companion_window_index_buffer_memory_(VK_NULL_HANDLE)
+  {
+    memset(&left_eye_desc_, 0, sizeof(left_eye_desc_));
+    memset(&right_eye_desc_, 0, sizeof(right_eye_desc_));
+    memset(&shader_modules_[0], 0, sizeof(shader_modules_));
+    memset(&pipelines_[0], 0, sizeof(pipelines_));
+    memset(scene_constant_buffer_data_, 0, sizeof(scene_constant_buffer_data_));
+    memset(descriptor_sets_, 0, sizeof(descriptor_sets_));
+  }
 
   //---------------------------------------------------------------------------
   // Purpose: run all the important functions
@@ -230,12 +265,19 @@ public:
 
 private:
   GLFWwindow* companion_window_;
+  VkBuffer companion_window_vertex_buffer_;
+  VkDeviceMemory companion_window_vertex_buffer_memory_;
+  VkBuffer companion_window_index_buffer_;
+  VkDeviceMemory companion_window_index_buffer_memory_;
+  unsigned int companion_window_index_size_;
+  uint32_t companion_window_width_;
+  uint32_t companion_window_height_;
 
   VkInstance instance_;
   VkDebugReportCallbackEXT callback_;
   VkSurfaceKHR surface_;
 
-  VkPhysicalDevice physical_device_ = VK_NULL_HANDLE; // implicitly destroyed with VkInstance
+  VkPhysicalDevice physical_device_;
   VkPhysicalDeviceProperties physical_device_properties;
   VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
   VkPhysicalDeviceFeatures physical_device_features;
@@ -246,14 +288,14 @@ private:
   VkQueue present_queue_; // DELETE
 
   VkSwapchainKHR swapchain_;
-  std::vector<VkImage> swapchain_images_; // implicitly created and destroyed
-  uint32_t current_swapchain_image_;
-  VkFormat swapchain_image_format_;
+  uint32_t frame_index_;
   VkExtent2D swapchain_extent_;
+  VkFormat swapchain_image_format_;
+  uint32_t current_swapchain_image_;
+  std::vector<VkImage> swapchain_images_; // implicitly created and destroyed
   std::vector<VkImageView> swapchain_image_views_;
   std::vector<VkFramebuffer> swapchain_framebuffers_;
   std::vector<VkSemaphore> swapchain_semaphores_;
-  uint32_t frame_index_;
   VkRenderPass swapchain_render_pass_;
 
   VkDescriptorSetLayout descriptor_set_layout_;
@@ -264,11 +306,9 @@ private:
   VkCommandPool command_pool_;
 
   std::vector<Vertex> vertices_;
+  unsigned int vert_count_;
 
-  VkBuffer companion_window_vertex_buffer_;
-  VkDeviceMemory companion_window_vertex_buffer_memory_;
-  VkBuffer companion_window_index_buffer_;
-  VkDeviceMemory companion_window_index_buffer_memory_;
+  
 
   VkDescriptorPool descriptor_pool_;
   VkDescriptorSet descriptor_sets_[NUM_DESCRIPTOR_SETS];
@@ -336,9 +376,7 @@ private:
 
     VertexDataWindow(const Vector2 &pos, const Vector2 tex) : position(pos), tex_coord(tex) {}
   };
-
-  unsigned int companion_window_index_size_;
-  unsigned int vert_count_;
+  
 
   struct VertexDataScene {
     Vector3 position;
@@ -377,7 +415,7 @@ private:
     //----------------//
 
     // store a reference to the window when creating it
-    companion_window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
+    companion_window_ = glfwCreateWindow(companion_window_width_, companion_window_height_, "VulkanVR", nullptr, nullptr);
 
     glfwSetWindowUserPointer(companion_window_, this);
   }
@@ -807,8 +845,8 @@ private:
       framebuffer_create_info.renderPass = swapchain_render_pass_;
       framebuffer_create_info.attachmentCount = 1;
       framebuffer_create_info.pAttachments = &attachments[0];
-      framebuffer_create_info.width = WIDTH;
-      framebuffer_create_info.height = HEIGHT;
+      framebuffer_create_info.width = companion_window_width_;
+      framebuffer_create_info.height = companion_window_height_;
       framebuffer_create_info.layers = 1;
 
       if (vkCreateFramebuffer(device_, &framebuffer_create_info, nullptr, &swapchain_framebuffers_[i]) != VK_SUCCESS) {
@@ -1610,8 +1648,8 @@ private:
     render_pass_begin_info.framebuffer = swapchain_framebuffers_[current_swapchain_image_];
     render_pass_begin_info.renderArea.offset.x = 0;
     render_pass_begin_info.renderArea.offset.y = 0;
-    render_pass_begin_info.renderArea.extent.width = WIDTH;
-    render_pass_begin_info.renderArea.extent.height = HEIGHT;
+    render_pass_begin_info.renderArea.extent.width = companion_window_width_;
+    render_pass_begin_info.renderArea.extent.height = companion_window_height_;
     VkClearValue clear_values[1];
     clear_values[0].color.float32[0] = 0.0f;
     clear_values[0].color.float32[1] = 0.0f;
@@ -1622,9 +1660,9 @@ private:
     vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
     // Set viewport/scissor
-    VkViewport viewport = { 0.0f, 0.0f, (float)WIDTH, (float)HEIGHT, 0.0f, 1.0f };
+    VkViewport viewport = { 0.0f, 0.0f, (float)companion_window_width_, (float)companion_window_height_, 0.0f, 1.0f };
     vkCmdSetViewport(current_command_buffer_.command_buffer, 0, 1, &viewport);
-    VkRect2D scissor = { 0, 0, WIDTH, HEIGHT };
+    VkRect2D scissor = { 0, 0, companion_window_width_, companion_window_height_ };
     vkCmdSetScissor(current_command_buffer_.command_buffer, 0, 1, &scissor);
 
     // Bind the pipeline and descriptor set
