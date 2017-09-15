@@ -40,17 +40,6 @@ const std::string TEXTURE_PATH = "textures/chalet.jpg";
 //-----------------------------------------------------------------------------
 // Purpose: shows which validation layers are required
 //-----------------------------------------------------------------------------
-// "VK_LAYER_LUNARG_standard_validation"
-
-// "VK_LAYER_GOOGLE_threading",
-// "VK_LAYER_LUNARG_parameter_validation",
-// "VK_LAYER_LUNARG_object_tracker",
-// "VK_LAYER_LUNARG_core_validation",
-// "VK_LAYER_LUNARG_image" not available
-// "VK_LAYER_LUNARG_swapchain" not available
-
-// TODO: Learn how to install more validation layers
-
 const std::vector<const char*> validation_layers = {
   "VK_LAYER_LUNARG_standard_validation"
 };
@@ -408,13 +397,6 @@ private:
       throw std::runtime_error("VR_Init Failed");
     }
 
-    //p_render_models_ = (vr::IVRRenderModels *)vr::VR_GetGenericInterface(vr::IVRRenderModels_Version, &e_error);
-    //if (!p_render_models_) {
-    //  p_hmd_ = NULL;
-    //  vr::VR_Shutdown();
-    //  throw std::runtime_error("Unable to get render model interface.");
-    //}
-
     near_clip_ = 0.1f;
     far_clip_ = 30.0f;
 
@@ -465,17 +447,6 @@ private:
     command_buffers_.push_front(current_command_buffer_);
 
     vkQueueWaitIdle(graphics_queue_);
-
-    //createDescriptorSetLayout();
-    //createDepthResources();
-    //createFramebuffers();
-    //createVertexBuffer();
-    //createIndexBuffer();
-    //createUniformBuffer();
-    //createDescriptorPool();
-    //createDescriptorSet();
-    //createCommandBuffers();
-    //createSemaphores();
   }
 
   //---------------------------------------------------------------------------
@@ -959,155 +930,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: Creating the pipeline and passing shaders through it (LEGACY)
-  //---------------------------------------------------------------------------
-  //void createGraphicsPipeline() {
-  //  auto vert_shader_code = readFile("shaders/vert.spv");
-  //  auto frag_shader_code = readFile("shaders/frag.spv");
-
-  //  // the shader modules are only needed during the pipeline creation process so they are local
-  //  VkShaderModule vert_shader_module = createShaderModule(vert_shader_code);
-  //  VkShaderModule frag_shader_module = createShaderModule(frag_shader_code);
-
-  //  VkPipelineShaderStageCreateInfo vert_shader_stage_info = {};
-  //  vert_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  //  vert_shader_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
-  //  vert_shader_stage_info.module = vert_shader_module; // implies that you can add multiple modules with different entry points
-  //  vert_shader_stage_info.pName = "main";
-
-  //  VkPipelineShaderStageCreateInfo frag_shader_stage_info = {};
-  //  frag_shader_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-  //  frag_shader_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-  //  frag_shader_stage_info.module = frag_shader_module;
-  //  frag_shader_stage_info.pName = "main";
-
-  //  // store the shader stage info into an array for pipeline creation
-  //  VkPipelineShaderStageCreateInfo shader_stages[] = { vert_shader_stage_info, frag_shader_stage_info };
-
-  //  //----------------------------------
-  //  /*   Fixed Function operations   */
-  //  //----------------------------------
-  //  VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
-  //  vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-
-  //  auto binding_description = Vertex::getBindingDescription();
-  //  auto attribute_descriptions = Vertex::getAttributeDescriptions();
-
-  //  vertex_input_info.vertexBindingDescriptionCount = 1; // spacing between data and whether the data is per-vertex or per-instance
-  //  vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribute_descriptions.size()); // type of the attributes passed to the vertex shader
-  //  vertex_input_info.pVertexBindingDescriptions = &binding_description;
-  //  vertex_input_info.pVertexAttributeDescriptions = attribute_descriptions.data();
-
-  //  // input assembly describes the type of geometry from the vertices
-  //  VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
-  //  input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-  //  input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // topology decides what kind of geometry will be drawn from the vertices
-  //  input_assembly.primitiveRestartEnable = VK_FALSE; // allows you to use the element buffer
-
-  //  // viewports describes the region of the framebuffer that the output will be rendered to
-  //  VkViewport viewport = {};
-  //  viewport.x = 0.0f;
-  //  viewport.y = 0.0f;
-  //  viewport.width = (float)swapchain_extent_.width;
-  //  viewport.height = (float)swapchain_extent_.height;
-  //  viewport.minDepth = 0.0f;
-  //  viewport.maxDepth = 1.0f;
-
-  //  // scissor rectangles define the regions pixels will be stored
-  //  // drawing the entire framebuffer so scissors cover it entirely
-  //  VkRect2D scissor = {};
-  //  scissor.offset = { 0, 0 };
-  //  scissor.extent = swapchain_extent_;
-
-  //  // scissor and viewport values go in here
-  //  VkPipelineViewportStateCreateInfo viewport_state = {};
-  //  viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-  //  viewport_state.viewportCount = 1;
-  //  viewport_state.pViewports = &viewport;
-  //  viewport_state.scissorCount = 1;
-  //  viewport_state.pScissors = &scissor;
-
-  //  VkPipelineRasterizationStateCreateInfo rasterizer = {};
-  //  rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-  //  rasterizer.depthClampEnable = VK_FALSE; // this clamps fragments beyond the near and far planes instead of discarding them
-  //  rasterizer.rasterizerDiscardEnable = VK_FALSE; // if VK_TRUE, the geometry never passes the rasterizer
-  //  rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // determines how fragments are generated for geometry you could replace _FILL to _LINE or _POINT
-  //  rasterizer.lineWidth = 1.0f;
-  //  rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; // determines the type of culling
-  //  rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; // determines the vertex order for faces to be considered front-facing
-  //  rasterizer.depthBiasEnable = VK_FALSE; // alter the depth value
-
-  //  // for anti-aliasing
-  //  VkPipelineMultisampleStateCreateInfo multisampling = {};
-  //  multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-  //  multisampling.sampleShadingEnable = VK_FALSE;
-  //  multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-  //  VkPipelineDepthStencilStateCreateInfo depth_stencil = {};
-  //  depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-  //  depth_stencil.depthTestEnable = VK_TRUE;
-  //  depth_stencil.depthWriteEnable = VK_TRUE;
-  //  depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
-  //  depth_stencil.depthBoundsTestEnable = VK_FALSE;
-  //  depth_stencil.stencilTestEnable = VK_FALSE;
-
-  //  // configuration per attached framebuffer
-  //  VkPipelineColorBlendAttachmentState colour_blend_attachment = {};
-  //  colour_blend_attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-  //  colour_blend_attachment.blendEnable = VK_FALSE;
-
-  //  VkPipelineColorBlendStateCreateInfo colour_blending = {};
-  //  colour_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-  //  colour_blending.logicOpEnable = VK_FALSE;
-  //  colour_blending.logicOp = VK_LOGIC_OP_COPY;
-  //  colour_blending.attachmentCount = 1;
-  //  colour_blending.pAttachments = &colour_blend_attachment;
-  //  colour_blending.blendConstants[0] = 0.0f;
-  //  colour_blending.blendConstants[1] = 0.0f;
-  //  colour_blending.blendConstants[2] = 0.0f;
-  //  colour_blending.blendConstants[3] = 0.0f;
-
-  //  // used to specify uniform values and push constants
-  //  VkPipelineLayoutCreateInfo pipeline_layout_info = {};
-  //  pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  //  pipeline_layout_info.setLayoutCount = 1;
-  //  pipeline_layout_info.pSetLayouts = &descriptor_set_layout_;
-
-  //  if (vkCreatePipelineLayout(device_, &pipeline_layout_info, nullptr, &pipeline_layout_) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to create pipeline layout!");
-  //  }
-
-  //  //-----------------------------------------
-  //  // * End of Fixed Function Operations * //
-  //  //-----------------------------------------
-
-  //  // bring all the information together
-  //  VkGraphicsPipelineCreateInfo pipeline_info = {};
-  //  pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-  //  pipeline_info.stageCount = 2;
-  //  pipeline_info.pStages = shader_stages;
-  //  pipeline_info.pVertexInputState = &vertex_input_info;
-  //  pipeline_info.pInputAssemblyState = &input_assembly;
-  //  pipeline_info.pViewportState = &viewport_state;
-  //  pipeline_info.pRasterizationState = &rasterizer;
-  //  pipeline_info.pMultisampleState = &multisampling;
-  //  pipeline_info.pDepthStencilState = &depth_stencil;
-  //  pipeline_info.pColorBlendState = &colour_blending;
-  //  pipeline_info.layout = pipeline_layout_;
-  //  pipeline_info.renderPass = render_pass_;
-  //  pipeline_info.subpass = 0;
-  //  pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
-
-  //  if (vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &graphics_pipeline_) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to create graphics pipeline!");
-  //  }
-
-  //  // cleaning up shader modules after pipeline creation
-  //  vkDestroyShaderModule(device_, frag_shader_module, nullptr);
-  //  vkDestroyShaderModule(device_, vert_shader_module, nullptr);
-  //}
-
-  //---------------------------------------------------------------------------
   // Purpose: Creating the pipeline and passing shaders through it
   //---------------------------------------------------------------------------
   void createGraphicsPipeline() {
@@ -1452,13 +1274,6 @@ private:
       throw std::runtime_error("Failed to load texture image!");
     }
 
-    // Copy the base to a buffer, reserve for mip maps
-    //uint8_t *p_buffer = new uint8_t[tex_width * tex_height * 4 * 2];
-    //uint8_t *p_prev_buffer = p_buffer;
-    //uint8_t *p_current_buffer = p_buffer;
-    //memcpy(p_current_buffer, &pixels, static_cast<size_t>(sizeof(uint8_t) * tex_width * tex_height * 4));
-    //p_current_buffer += sizeof(uint8_t) * tex_width * tex_height * 4;
-
     VkDeviceSize buffer_size = tex_width * tex_height * 4;
 
     std::vector<VkBufferImageCopy> buffer_image_copies;
@@ -1478,24 +1293,7 @@ private:
     buffer_image_copy.imageExtent.depth = 1;
     buffer_image_copies.push_back(buffer_image_copy);
 
-    //int mip_width = tex_width;
-    //int mip_height = tex_height;
-
-    //while (mip_width > 1 && mip_height > 1) {
-    //  GenMipMapRGBA(p_prev_buffer, p_current_buffer, mip_width, mip_height, &mip_width, &mip_height);
-    //  buffer_image_copy.bufferOffset = p_current_buffer - p_buffer;
-    //  buffer_image_copy.imageSubresource.mipLevel++;
-    //  buffer_image_copy.imageExtent.width = mip_width;
-    //  buffer_image_copy.imageExtent.height = mip_height;
-    //  buffer_image_copies.push_back(buffer_image_copy);
-    //  p_prev_buffer = p_current_buffer;
-    //  p_current_buffer += (mip_width * mip_height * 4 * sizeof(uint8_t));
-    //}
-    //buffer_size = p_current_buffer - p_buffer;
-
     // Create the image
-    //createImage(tex_width, tex_height, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL,
-    //  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_image_, scene_image_memory_);
     VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
     image_create_info.extent.width = tex_width;
@@ -1520,7 +1318,6 @@ private:
     vkBindImageMemory(device_, scene_image_, scene_image_memory_, 0);
 
     // Create the image view
-    //createImageView(scene_image_, scene_image_view_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
     VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
     imageViewCreateInfo.flags = 0;
     imageViewCreateInfo.image = scene_image_;
@@ -1742,52 +1539,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: allocating descriptor sets (LEGACY)
-  //---------------------------------------------------------------------------
-  //void createDescriptorSets() {
-  //  VkDescriptorSetLayout layouts[] = { descriptor_set_layout_ };
-  //  VkDescriptorSetAllocateInfo alloc_info = {};
-  //  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  //  alloc_info.descriptorPool = descriptor_pool_;
-  //  alloc_info.descriptorSetCount = 1;
-  //  alloc_info.pSetLayouts = layouts;
-
-  //  if (vkAllocateDescriptorSets(device_, &alloc_info, &descriptor_sets_) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to allocate descriptor set!");
-  //  }
-
-  //  VkDescriptorBufferInfo buffer_info = {};
-  //  buffer_info.buffer = uniform_buffer_;
-  //  buffer_info.offset = 0;
-  //  buffer_info.range = sizeof(UniformBufferObject);
-
-  //  VkDescriptorImageInfo image_info = {};
-  //  image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  //  image_info.imageView = texture_image_view_;
-  //  image_info.sampler = texture_sampler_;
-
-  //  std::array<VkWriteDescriptorSet, 2> descriptor_writes = {};
-
-  //  descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  //  descriptor_writes[0].dstSet = descriptor_sets_;
-  //  descriptor_writes[0].dstBinding = 0;
-  //  descriptor_writes[0].dstArrayElement = 0;
-  //  descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  //  descriptor_writes[0].descriptorCount = 1;
-  //  descriptor_writes[0].pBufferInfo = &buffer_info;
-
-  //  descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  //  descriptor_writes[1].dstSet = descriptor_sets_;
-  //  descriptor_writes[1].dstBinding = 1;
-  //  descriptor_writes[1].dstArrayElement = 0;
-  //  descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  //  descriptor_writes[1].descriptorCount = 1;
-  //  descriptor_writes[1].pImageInfo = &image_info;
-
-  //  vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
-  //}
-
-  //---------------------------------------------------------------------------
   // Purpose: allocating descriptor sets
   //---------------------------------------------------------------------------
   void createDescriptorSets() {
@@ -1876,69 +1627,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: allocates and records commands for each swap chain image
-  //---------------------------------------------------------------------------
-  //void createCommandBuffers() {
-  //  command_buffers_.resize(swap_chain_framebuffers_.size());
-
-  //  VkCommandBufferAllocateInfo alloc_info = {};
-  //  alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  //  alloc_info.commandPool = command_pool_;
-  //  alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // determines if it's a primary buffer or a secondary buffer
-  //  alloc_info.commandBufferCount = (uint32_t)command_buffers_.size();
-
-  //  if (vkAllocateCommandBuffers(device_, &alloc_info, command_buffers_.data()) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to allocate command buffers!");
-  //  }
-
-  //  for (size_t i = 0; i < command_buffers_.size(); i++) {
-  //    VkCommandBufferBeginInfo begin_info = {};
-  //    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  //    begin_info.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT; // specifies how we're going to use the command buffer
-
-  //    vkBeginCommandBuffer(command_buffers_[i], &begin_info); // a call to this function implicitly resets the command buffer
-
-  //    VkRenderPassBeginInfo render_pass_info = {};
-  //    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-  //    render_pass_info.renderPass = render_pass_;
-  //    render_pass_info.framebuffer = swap_chain_framebuffers_[i];
-
-  //    // defining the size of the render area
-  //    render_pass_info.renderArea.offset = { 0, 0 };
-  //    render_pass_info.renderArea.extent = swap_chain_extent_;
-
-  //    std::array<VkClearValue, 2> clear_values = {};
-  //    clear_values[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
-  //    clear_values[1].depthStencil = { 1.0f, 0 };
-
-  //    render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
-  //    render_pass_info.pClearValues = clear_values.data();
-
-  //    vkCmdBeginRenderPass(command_buffers_[i], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-
-  //    // binding the graphics pipeline
-  //    vkCmdBindPipeline(command_buffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_);
-
-  //    // binding the vertex buffer during rendering
-  //    VkBuffer vertex_buffers[] = { vertex_buffer_ };
-  //    VkDeviceSize offsets[] = { 0 };
-  //    vkCmdBindVertexBuffers(command_buffers_[i], 0, 1, vertex_buffers, offsets);
-
-  //    vkCmdBindIndexBuffer(command_buffers_[i], index_buffer_, 0, VK_INDEX_TYPE_UINT32);
-  //    vkCmdBindDescriptorSets(command_buffers_[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_set_, 0, nullptr);
-
-  //    // draw command
-  //    vkCmdDrawIndexed(command_buffers_[i], static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
-
-  //    vkCmdEndRenderPass(command_buffers_[i]); // finishing the render pass
-
-  //    if (vkEndCommandBuffer(command_buffers_[i]) != VK_SUCCESS) {
-  //      throw std::runtime_error("Failed to record command buffer!");
-  //    }
-  //  }
-  //}
-
-  //---------------------------------------------------------------------------
   // Purpose: creating semaphores to synchronise the rendering process
   //---------------------------------------------------------------------------
   void createSemaphores() {
@@ -1973,68 +1661,6 @@ private:
     memcpy(data, &ubo, sizeof(ubo));
     vkUnmapMemory(device_, uniform_buffer_memory_);
   }
-
-  //---------------------------------------------------------------------------
-  // Purpose: acquire an image from the swap chain,...
-  // ...execute the command buffer with that image as attachment in the framebuffer,...
-  // ...return the image to the swapchain for presentation (LEGACY)
-  //---------------------------------------------------------------------------
-  //void drawFrame() {
-  //  // acquire the image from the swap chain
-  //  uint32_t image_index;
-  //  VkResult result = vkAcquireNextImageKHR(device_, swapchain_, std::numeric_limits<uint64_t>::max(), image_available_semaphore_, VK_NULL_HANDLE, &image_index);
-
-  //  if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-  //    recreateSwapChain();
-  //    return;
-  //  }
-  //  else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-  //    throw std::runtime_error("Failed to acquire swap chain image!");
-  //  }
-
-  //  // execute the command buffer
-  //  VkSubmitInfo submit_info = {};
-  //  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-  //  VkSemaphore wait_semaphores[] = { image_available_semaphore_ }; // setting which semaphore to wait for
-  //  VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }; // which stage of the pipeline to wait
-  //  submit_info.waitSemaphoreCount = 1;
-  //  submit_info.pWaitSemaphores = wait_semaphores;
-  //  submit_info.pWaitDstStageMask = wait_stages;
-  //  submit_info.commandBufferCount = 1;
-  //  //submit_info.pCommandBuffers = &command_buffers_[image_index];
-
-  //  VkSemaphore signal_semaphores[] = { render_finished_semaphore_ };
-  //  submit_info.signalSemaphoreCount = 1;
-  //  submit_info.pSignalSemaphores = signal_semaphores;
-
-  //  if (vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to submit draw command buffer!");
-  //  }
-
-  //  // sending the result back to the swap chain
-  //  VkPresentInfoKHR present_info = {};
-  //  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-  //  present_info.waitSemaphoreCount = 1;
-  //  present_info.pWaitSemaphores = signal_semaphores;
-
-  //  VkSwapchainKHR swap_chains[] = { swapchain_ };
-  //  present_info.swapchainCount = 1;
-  //  present_info.pSwapchains = swap_chains;
-  //  present_info.pImageIndices = &image_index;
-
-  //  result = vkQueuePresentKHR(present_queue_, &present_info);
-
-  //  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-  //    recreateSwapChain();
-  //  }
-  //  else if (result != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to present swap chain image!");
-  //  }
-
-  //  vkQueueWaitIdle(present_queue_);
-  //}
-
 
   //---------------------------------------------------------------------------
   // Purpose: acquire an image from the swap chain,...
@@ -2618,45 +2244,7 @@ private:
     // associate memory with the buffer if allocation was successful
     vkBindBufferMemory(device_, buffer, buffer_memory, 0);
   }
-
-  //---------------------------------------------------------------------------
-  // Purpose: create an image object (LEGACY)
-  //---------------------------------------------------------------------------
-  //void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& image_memory) {
-  //  VkImageCreateInfo image_info = {};
-  //  image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-  //  image_info.imageType = VK_IMAGE_TYPE_2D;
-  //  image_info.extent.width = width;
-  //  image_info.extent.height = height;
-  //  image_info.extent.depth = 1;
-  //  image_info.mipLevels = 1;
-  //  image_info.arrayLayers = 1;
-  //  image_info.format = format;
-  //  image_info.tiling = tiling;
-  //  image_info.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
-  //  image_info.usage = usage;
-  //  image_info.samples = VK_SAMPLE_COUNT_1_BIT;
-  //  image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  //  if (vkCreateImage(device_, &image_info, nullptr, &image) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to create image!");
-  //  }
-
-  //  VkMemoryRequirements mem_requirements;
-  //  vkGetImageMemoryRequirements(device_, image, &mem_requirements);
-
-  //  VkMemoryAllocateInfo alloc_info = {};
-  //  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  //  alloc_info.allocationSize = mem_requirements.size;
-  //  alloc_info.memoryTypeIndex = findMemoryType(mem_requirements.memoryTypeBits, properties);
-
-  //  if (vkAllocateMemory(device_, &alloc_info, nullptr, &image_memory) != VK_SUCCESS) {
-  //    throw std::runtime_error("Failed to allocate image memory!");
-  //  }
-
-  //  vkBindImageMemory(device_, image, image_memory, 0);
-  //}
-
+  
   //---------------------------------------------------------------------------
   // Purpose: create an image object (LEGACY)
   //---------------------------------------------------------------------------
