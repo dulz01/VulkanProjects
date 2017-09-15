@@ -312,7 +312,7 @@ private:
 
   VkCommandPool command_pool_;
 
-  std::vector<Vertex> vertices_;
+  std::vector<float> vertices_;
   unsigned int vert_count_;
 
 
@@ -1249,7 +1249,7 @@ private:
     std::vector<tinyobj::material_t> materials;
     std::string err; // errors and warnings when loading the file
 
-                     // loading the model into data structures
+    // loading the model into data structures
     if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
       throw std::runtime_error(err);
     }
@@ -1257,21 +1257,21 @@ private:
     // combine all of the faces into a single model
     for (const auto& shape : shapes) {
       for (const auto& index : shape.mesh.indices) { // assumes each vertex is unique
-        Vertex vertex = {};
+        //Vertex vertex = {};
+        vertices_.push_back(attrib.vertices[3 * index.vertex_index + 0]);
+        vertices_.push_back(attrib.vertices[3 * index.vertex_index + 1]);
+        vertices_.push_back(attrib.vertices[3 * index.vertex_index + 2]);
+        vertices_.push_back(attrib.texcoords[2 * index.texcoord_index + 0]);
+        vertices_.push_back(1.0f - attrib.texcoords[2 * index.texcoord_index + 1]); // inverting values because obj format assumes origin is bottom left corner instead of top left corner
+        //vertex.pos = {
+        //};
 
-        vertex.pos = {
-          attrib.vertices[3 * index.vertex_index + 0],
-          attrib.vertices[3 * index.vertex_index + 1],
-          attrib.vertices[3 * index.vertex_index + 2]
-        };
+        //vertex.tex_coord = {
+        //};
 
-        vertex.tex_coord = {
-          attrib.texcoords[2 * index.texcoord_index + 0],
-          1.0f - attrib.texcoords[2 * index.texcoord_index + 1] // inverting values because obj format assumes origin is bottom left corner instead of top left corner
-        };
+        //vertex.colour = { 1.0f, 1.0f, 1.0f };
 
-        vertex.colour = { 1.0f, 1.0f, 1.0f };
-        vertices_.push_back(vertex);
+        //vertices_.push_back(vertex);
       }
     }
     vert_count_ = vertices_.size();
