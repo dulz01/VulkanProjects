@@ -202,6 +202,38 @@ enum DescriptorSetIndex_t {
   DESCRIPTOR_SET_RIGHT_EYE_SCENE,
   DESCRIPTOR_SET_COMPANION_LEFT_TEXTURE,
   DESCRIPTOR_SET_COMPANION_RIGHT_TEXTURE,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL0,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL1,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL2,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL3,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL4,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL5,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL6,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL7,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL8,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL9,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL10,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL11,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL12,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL13,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL14,
+  DESCRIPTOR_SET_LEFT_EYE_RENDER_MODEL15,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL0,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL1,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL2,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL3,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL4,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL5,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL6,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL7,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL8,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL9,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL10,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL11,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL12,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL13,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL14,
+  DESCRIPTOR_SET_RIGHT_EYE_RENDER_MODEL15,
   NUM_DESCRIPTOR_SETS
 };
 
@@ -287,6 +319,12 @@ private:
   //------------------//
   vr::IVRSystem *p_hmd_;
   vr::IVRRenderModels *p_render_models_;
+  vr::TrackedDevicePose_t tracked_device_pose_[vr::k_unMaxTrackedDeviceCount];
+  int valid_pose_count_;
+  std::string str_pose_classes_;
+  char dev_class_char[vr::k_unMaxTrackedDeviceCount];
+  glm::mat4 mat4_device_pose_[vr::k_unMaxTrackedDeviceCount];
+  glm::mat4 mat4_hmd_pose_;
 
   struct FramebufferDesc {
     VkImage image;
@@ -429,17 +467,13 @@ private:
     vkQueueWaitIdle(graphics_queue_);
 
     //createDescriptorSetLayout();
-
     //createDepthResources();
     //createFramebuffers();
-
     //createVertexBuffer();
     //createIndexBuffer();
     //createUniformBuffer();
-
     //createDescriptorPool();
     //createDescriptorSet();
-
     //createCommandBuffers();
     //createSemaphores();
   }
@@ -455,7 +489,7 @@ private:
     // ... or the window is closed
     while (!glfwWindowShouldClose(companion_window_)) {
       glfwPollEvents();
-      //drawFrame();
+      drawFrame();
     }
 
     vkDeviceWaitIdle(device_);
@@ -1187,7 +1221,7 @@ private:
     for (uint32_t PSO = 0; PSO < PSO_COUNT; PSO++) {
       VkGraphicsPipelineCreateInfo pipeline_create_info = {};
       pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-      
+
       VkVertexInputBindingDescription binding_description;
       binding_description.binding = 0;
       binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
@@ -1460,11 +1494,45 @@ private:
     //buffer_size = p_current_buffer - p_buffer;
 
     // Create the image
-    createImage(tex_width, tex_height, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL,
-      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_image_, scene_image_memory_);
+    //createImage(tex_width, tex_height, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL,
+    //  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_image_, scene_image_memory_);
+    VkImageCreateInfo image_create_info = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.extent.width = tex_width;
+    image_create_info.extent.height = tex_height;
+    image_create_info.extent.depth = 1;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    image_create_info.flags = 0;
+    vkCreateImage(device_, &image_create_info, nullptr, &scene_image_);
+
+    VkMemoryRequirements memory_requirements = {};
+    vkGetImageMemoryRequirements(device_, scene_image_, &memory_requirements);
+
+    VkMemoryAllocateInfo memoryAllocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+    memoryAllocateInfo.allocationSize = memory_requirements.size;
+    memoryAllocateInfo.memoryTypeIndex = findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    vkAllocateMemory(device_, &memoryAllocateInfo, nullptr, &scene_image_memory_);
+    vkBindImageMemory(device_, scene_image_, scene_image_memory_, 0);
 
     // Create the image view
-    createImageView(scene_image_, scene_image_view_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    //createImageView(scene_image_, scene_image_view_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+    VkImageViewCreateInfo imageViewCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+    imageViewCreateInfo.flags = 0;
+    imageViewCreateInfo.image = scene_image_;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = image_create_info.format;
+    imageViewCreateInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    imageViewCreateInfo.subresourceRange.levelCount = image_create_info.mipLevels;
+    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewCreateInfo.subresourceRange.layerCount = 1;
+    vkCreateImageView(device_, &imageViewCreateInfo, nullptr, &scene_image_view_);
 
     // Create a staging buffer
     VkBuffer staging_buffer;
@@ -1751,10 +1819,10 @@ private:
 
     // Scene descriptor sets
     for (uint32_t eye = 0; eye < 2; eye++) {
-      VkDescriptorBufferInfo bufferInfo = {};
-      bufferInfo.buffer = scene_constant_buffer_[eye];
-      bufferInfo.offset = 0;
-      bufferInfo.range = VK_WHOLE_SIZE;
+      VkDescriptorBufferInfo buffer_info = {};
+      buffer_info.buffer = scene_constant_buffer_[eye];
+      buffer_info.offset = 0;
+      buffer_info.range = VK_WHOLE_SIZE;
 
       VkDescriptorImageInfo image_info = {};
       image_info.imageView = scene_image_view_;
@@ -1769,7 +1837,7 @@ private:
       write_descriptor_sets[0].dstBinding = 0;
       write_descriptor_sets[0].descriptorCount = 1;
       write_descriptor_sets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-      write_descriptor_sets[0].pBufferInfo = &bufferInfo;
+      write_descriptor_sets[0].pBufferInfo = &buffer_info;
       write_descriptor_sets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
       write_descriptor_sets[1].dstSet = descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + eye];
       write_descriptor_sets[1].dstBinding = 1;
@@ -1983,8 +2051,8 @@ private:
       command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
       vkBeginCommandBuffer(current_command_buffer_.command_buffer, &command_buffer_begin_info);
 
-       renderStereoTargets();
-       renderCompanionWindow();
+      renderStereoTargets();
+      renderCompanionWindow();
 
       // end the command buffer
       vkEndCommandBuffer(current_command_buffer_.command_buffer);
@@ -2040,7 +2108,7 @@ private:
     present_info.pImageIndices = &current_swapchain_image_;
     vkQueuePresentKHR(graphics_queue_, &present_info);
 
-    // updateHMDMatrixPose();
+    updateHMDMatrixPose();
 
     frame_index_ = (frame_index_ + 1) % swapchain_images_.size();
   }
@@ -2171,6 +2239,9 @@ private:
     right_eye_desc_.image_layout = image_memory_barrier.newLayout;
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: Render for Companion window
+  //---------------------------------------------------------------------------
   void renderCompanionWindow() {
     if (vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, swapchain_semaphores_[frame_index_], VK_NULL_HANDLE, &current_swapchain_image_) != VK_SUCCESS) {
       return;
@@ -2202,7 +2273,7 @@ private:
     render_pass_begin_info.renderArea.offset.y = 0;
     render_pass_begin_info.renderArea.extent.width = WIDTH;
     render_pass_begin_info.renderArea.extent.height = HEIGHT;
-    VkClearValue clear_values[1]; 
+    VkClearValue clear_values[1];
     clear_values[0].color.float32[0] = 0.0f;
     clear_values[0].color.float32[1] = 0.0f;
     clear_values[0].color.float32[2] = 0.0f;
@@ -2255,7 +2326,40 @@ private:
     right_eye_desc_.image_layout = image_memory_barrier.newLayout;
   }
 
-  // updateHMDMatrixPose();
+  //---------------------------------------------------------------------------
+  // Purpose: Update HMD Pose. From hellovr_vulkan in openVR SDK
+  //---------------------------------------------------------------------------
+  void updateHMDMatrixPose() {
+    if (!p_hmd_)
+      return;
+
+    vr::VRCompositor()->WaitGetPoses(tracked_device_pose_, vr::k_unMaxTrackedDeviceCount, NULL, 0);
+
+    valid_pose_count_ = 0;
+    str_pose_classes_ = "";
+    for (int device = 0; device < vr::k_unMaxTrackedDeviceCount; ++device) {
+      if (tracked_device_pose_[device].bPoseIsValid) {
+        valid_pose_count_++;
+        mat4_device_pose_[device] = convertSteamVRMatrixToMatrix4(tracked_device_pose_[device].mDeviceToAbsoluteTracking);
+        if (dev_class_char[device] == 0) {
+          switch (p_hmd_->GetTrackedDeviceClass(device)) {
+          case vr::TrackedDeviceClass_Controller:        dev_class_char[device] = 'C'; break;
+          case vr::TrackedDeviceClass_HMD:               dev_class_char[device] = 'H'; break;
+          case vr::TrackedDeviceClass_Invalid:           dev_class_char[device] = 'I'; break;
+          case vr::TrackedDeviceClass_GenericTracker:    dev_class_char[device] = 'G'; break;
+          case vr::TrackedDeviceClass_TrackingReference: dev_class_char[device] = 'T'; break;
+          default:                                       dev_class_char[device] = '?'; break;
+          }
+        }
+        str_pose_classes_ += dev_class_char[device];
+      }
+    }
+
+    if (tracked_device_pose_[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid) {
+      mat4_hmd_pose_ = mat4_device_pose_[vr::k_unTrackedDeviceIndex_Hmd];
+      glm::inverse(mat4_hmd_pose_);
+    }
+  }
   //-------------------------------------------------------------------------//
   //-------------------------------------------------------------------------//
   //                           HELPER FUNCTIONS                              //
@@ -2399,6 +2503,19 @@ private:
 
       return actual_extent;
     }
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: convert SteamVR Matrix To Matrix 4
+  //---------------------------------------------------------------------------
+  glm::mat4 convertSteamVRMatrixToMatrix4(const vr::HmdMatrix34_t &matPose) {
+    glm::mat4 matrixObj(
+      matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
+      matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
+      matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
+      matPose.m[0][3], matPose.m[1][3], matPose.m[2][3], 1.0f
+    );
+    return matrixObj;
   }
 
   //---------------------------------------------------------------------------
@@ -3295,7 +3412,7 @@ private:
     // Transition all of the swapchain images to PRESENT_SRC so they are ready for presentation
     QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
 
-    for (size_t swapchain_image = 0; swapchain_image < swapchain_images_.size(); swapchain_image) {
+    for (size_t swapchain_image = 0; swapchain_image < swapchain_images_.size(); swapchain_image++) {
       VkImageMemoryBarrier image_memory_barrier = {};
       image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
       image_memory_barrier.srcAccessMask = 0;
