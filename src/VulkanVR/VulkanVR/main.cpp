@@ -1882,7 +1882,7 @@ private:
       command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
       vkBeginCommandBuffer(current_command_buffer_.command_buffer, &command_buffer_begin_info);
 
-      // renderStereoTargets();
+       renderStereoTargets();
       // renderCompanionWindow();
 
       // end the command buffer
@@ -1939,11 +1939,139 @@ private:
     present_info.pImageIndices = &current_swapchain_image_;
     vkQueuePresentKHR(graphics_queue_, &present_info);
 
-    // UpdateHMDMatrixPose();
+    // updateHMDMatrixPose();
 
     frame_index_ = (frame_index_ + 1) % swapchain_images_.size();
   }
 
+  //---------------------------------------------------------------------------
+  // Purpose: creating a temporary command buffer for memory operations
+  //---------------------------------------------------------------------------
+  void renderStereoTargets() {
+    // set the viewport and scissor
+    VkViewport viewport = { 0.0f, 0.0f, (float)render_width_, (float)render_height_, 0.0f, 1.0f };
+    vkCmdSetViewport(current_command_buffer_.command_buffer, 0, 1, &viewport);
+    VkRect2D scissor = { 0, 0, render_width_, render_height_ };
+    vkCmdSetScissor(current_command_buffer_.command_buffer, 0, 1, &scissor);
+
+    //----------//
+    // Left Eye //
+    //----------//
+    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
+
+    //Transition eye image to VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    VkImageMemoryBarrier image_memory_barrier = {};
+    image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    image_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.oldLayout = left_eye_desc_.image_layout;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    image_memory_barrier.image = left_eye_desc_.image;
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.subresourceRange.baseMipLevel = 0;
+    image_memory_barrier.subresourceRange.levelCount = 1;
+    image_memory_barrier.subresourceRange.baseArrayLayer = 0;
+    image_memory_barrier.subresourceRange.layerCount = 1;
+    image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
+    image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    left_eye_desc_.image_layout = image_memory_barrier.newLayout;
+
+    // Transition the depth buffer to VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL on first use
+    if (left_eye_desc_.depth_stencil_image_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+      image_memory_barrier.image = left_eye_desc_.depth_stencil_image;
+      image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      image_memory_barrier.srcAccessMask = 0;
+      image_memory_barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      image_memory_barrier.oldLayout = left_eye_desc_.depth_stencil_image_layout;
+      image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+      left_eye_desc_.depth_stencil_image_layout = image_memory_barrier.newLayout;
+    }
+
+    // Start the renderpass
+    VkRenderPassBeginInfo render_pass_begin_info = {};
+    render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_begin_info.renderPass = left_eye_desc_.render_pass;
+    render_pass_begin_info.framebuffer = left_eye_desc_.frame_buffer;
+    render_pass_begin_info.renderArea.offset.x = 0;
+    render_pass_begin_info.renderArea.offset.y = 0;
+    render_pass_begin_info.renderArea.extent.width = render_width_;
+    render_pass_begin_info.renderArea.extent.height = render_height_;
+    render_pass_begin_info.clearValueCount = 2;
+
+    VkClearValue clear_values[2];
+    clear_values[0].color.float32[0] = 0.0f;
+    clear_values[0].color.float32[1] = 0.0f;
+    clear_values[0].color.float32[2] = 0.0f;
+    clear_values[0].color.float32[3] = 1.0f;
+    clear_values[1].depthStencil.depth = 1.0f;
+    clear_values[1].depthStencil.stencil = 0;
+    render_pass_begin_info.pClearValues = &clear_values[0];
+    vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    //RenderScene(vr::Eye_Left); // TODO
+
+    vkCmdEndRenderPass(current_command_buffer_.command_buffer);
+
+    // Transition eye image to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL for display on the companion window
+    image_memory_barrier.image = left_eye_desc_.image;
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    image_memory_barrier.oldLayout = left_eye_desc_.image_layout;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    left_eye_desc_.image_layout = image_memory_barrier.newLayout;
+
+    //-----------//
+    // Right Eye //
+    //-----------//
+    // Transition to VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+    image_memory_barrier.image = right_eye_desc_.image;
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.oldLayout = right_eye_desc_.image_layout;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    right_eye_desc_.image_layout = image_memory_barrier.newLayout;
+
+    // Transition the depth buffer to VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL on first use
+    if (right_eye_desc_.depth_stencil_image_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+      image_memory_barrier.image = right_eye_desc_.depth_stencil_image;
+      image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+      image_memory_barrier.srcAccessMask = 0;
+      image_memory_barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      image_memory_barrier.oldLayout = right_eye_desc_.depth_stencil_image_layout;
+      image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+      vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+      right_eye_desc_.depth_stencil_image_layout = image_memory_barrier.newLayout;
+    }
+
+    // Start the renderpass
+    render_pass_begin_info.renderPass = right_eye_desc_.render_pass;
+    render_pass_begin_info.framebuffer = right_eye_desc_.frame_buffer;
+    render_pass_begin_info.pClearValues = &clear_values[0];
+    vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    // RenderScene(vr::Eye_Right); // TODO
+
+    vkCmdEndRenderPass(current_command_buffer_.command_buffer);
+
+    // Transition eye image to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL for display on the companion window
+    image_memory_barrier.image = right_eye_desc_.image;
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    image_memory_barrier.oldLayout = right_eye_desc_.image_layout;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    right_eye_desc_.image_layout = image_memory_barrier.newLayout;
+  }
+
+  // renderCompanionWindow();
+  // updateHMDMatrixPose();
   //-------------------------------------------------------------------------//
   //-------------------------------------------------------------------------//
   //                           HELPER FUNCTIONS                              //
