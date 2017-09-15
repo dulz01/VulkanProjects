@@ -2,12 +2,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#define GLM_FORCE_RADIANS // makes sure that functions use radians
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE // changes the depth range start from -1.0 to 0.0
-#include <glm.hpp>
-#include <gtc/matrix_transform.hpp> // functions that can generate model transformations
-#include <gtx/hash.hpp> // for hash function converting user types into a hash key for std::map
-
 #define STB_IMAGE_IMPLEMENTATION // includes the function bodies from stb_image.h
 #include <stb_image.h>
 
@@ -113,9 +107,9 @@ struct SwapChainSupportDetails {
 // Purpose: holds the vertices data
 //-----------------------------------------------------------------------------
 struct Vertex {
-  glm::vec3 pos;
-  glm::vec3 colour;
-  glm::vec2 tex_coord;
+  Vector3 pos;
+  Vector3 colour;
+  Vector2 tex_coord;
 
   // passing the data format to the vertex shader
   static VkVertexInputBindingDescription getBindingDescription() {
@@ -156,23 +150,12 @@ struct Vertex {
 };
 
 //-----------------------------------------------------------------------------
-// Purpose: converting Vertex into a hash to be used as a key in std::map
-//-----------------------------------------------------------------------------
-namespace std {
-  template<> struct hash<Vertex> {
-    size_t operator()(Vertex const& vertex) const {
-      return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.colour) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.tex_coord) << 1);
-    }
-  };
-}
-
-//-----------------------------------------------------------------------------
 // Purpose: data we want the vertex shader to have
 //-----------------------------------------------------------------------------
 struct UniformBufferObject {
-  glm::mat4 model;
-  glm::mat4 view;
-  glm::mat4 proj;
+  Matrix4 model;
+  Matrix4 view;
+  Matrix4 proj;
 };
 
 //-----------------------------------------------------------------------------
@@ -232,6 +215,8 @@ enum DescriptorSetIndex_t {
 //-----------------------------------------------------------------------------
 class VulkanVRApplication {
 public:
+  VulkanVRApplication() {}
+
   //---------------------------------------------------------------------------
   // Purpose: run all the important functions
   //---------------------------------------------------------------------------
@@ -257,8 +242,8 @@ private:
 
   VkDevice device_;
 
-  VkQueue graphics_queue_;
-  VkQueue present_queue_;
+  VkQueue queue_;
+  VkQueue present_queue_; // DELETE
 
   VkSwapchainKHR swapchain_;
   std::vector<VkImage> swapchain_images_; // implicitly created and destroyed
@@ -269,8 +254,8 @@ private:
   std::vector<VkFramebuffer> swapchain_framebuffers_;
   std::vector<VkSemaphore> swapchain_semaphores_;
   uint32_t frame_index_;
-
   VkRenderPass swapchain_render_pass_;
+
   VkDescriptorSetLayout descriptor_set_layout_;
   VkPipelineLayout pipeline_layout_;
   VkPipeline pipelines_[PSO_COUNT];
@@ -278,44 +263,32 @@ private:
 
   VkCommandPool command_pool_;
 
-  VkImage depth_image_;
-  VkDeviceMemory depth_image_memory_;
-  VkImageView depth_image_view_;
-
-  VkImage texture_image_;
-  VkDeviceMemory texture_image_memory_;
-  VkImageView texture_image_view_;
-  VkSampler texture_sampler_;
-
   std::vector<Vertex> vertices_;
-  std::vector<uint32_t> indices_;
+
   VkBuffer companion_window_vertex_buffer_;
   VkDeviceMemory companion_window_vertex_buffer_memory_;
   VkBuffer companion_window_index_buffer_;
   VkDeviceMemory companion_window_index_buffer_memory_;
-  VkBuffer uniform_buffer_;
-  VkDeviceMemory uniform_buffer_memory_;
 
   VkDescriptorPool descriptor_pool_;
   VkDescriptorSet descriptor_sets_[NUM_DESCRIPTOR_SETS];
 
-  //std::vector<VkCommandBuffer> command_buffers_;
-
-  VkSemaphore image_available_semaphore_;
-  VkSemaphore render_finished_semaphore_;
-
   //------------------//
   // variables for VR //
   //------------------//
-  vr::IVRSystem *p_hmd_;
+  vr::IVRSystem *hmd_;
   vr::IVRRenderModels *p_render_models_;
   vr::TrackedDevicePose_t tracked_device_pose_[vr::k_unMaxTrackedDeviceCount];
   int valid_pose_count_;
   std::string str_pose_classes_;
   char dev_class_char[vr::k_unMaxTrackedDeviceCount];
+
   Matrix4 mat4_device_pose_[vr::k_unMaxTrackedDeviceCount];
   Matrix4 mat4_hmd_pose_;
-
+  Matrix4 mat4_proj_left_;
+  Matrix4 mat4_proj_right_;
+  Matrix4 mat4_eye_pos_left_;
+  Matrix4 mat4_eye_pos_right_;
 
   struct FramebufferDesc {
     VkImage image;
@@ -327,18 +300,10 @@ private:
     VkDeviceMemory depth_stencil_device_memory;
     VkImageView depth_stencil_image_view;
     VkRenderPass render_pass;
-    VkFramebuffer frame_buffer;
+    VkFramebuffer framebuffer;
   };
   FramebufferDesc left_eye_desc_;
   FramebufferDesc right_eye_desc_;
-
-  VkBuffer scene_uniform_buffer_[2];
-  VkDeviceMemory scene_uniform_buffer_memory_[2];
-
-  Matrix4 mat4_proj_left_;
-  Matrix4 mat4_proj_right_;
-  Matrix4 mat4_eye_pos_left_;
-  Matrix4 mat4_eye_pos_right_;
 
   float near_clip_;
   float far_clip_;
@@ -362,20 +327,22 @@ private:
   VkDeviceMemory scene_image_memory_;
   VkImageView scene_image_view_;
   VkSampler scene_sampler_;
+
   VkShaderModule shader_modules_[PSO_COUNT * 2];
 
   struct VertexDataWindow {
-    glm::vec2 position;
-    glm::vec2 tex_coord;
+    Vector2 position;
+    Vector2 tex_coord;
 
-    VertexDataWindow(const glm::vec2 &pos, const glm::vec2 tex) : position(pos), tex_coord(tex) {}
+    VertexDataWindow(const Vector2 &pos, const Vector2 tex) : position(pos), tex_coord(tex) {}
   };
+
   unsigned int companion_window_index_size_;
   unsigned int vert_count_;
 
   struct VertexDataScene {
-    glm::vec3 position;
-    glm::vec2 tex_coord;
+    Vector3 position;
+    Vector2 tex_coord;
   };
 
   //---------------------------------------------------------------------------
@@ -394,9 +361,9 @@ private:
     memset(&left_eye_desc_, 0, sizeof(left_eye_desc_));
     memset(&right_eye_desc_, 0, sizeof(right_eye_desc_));
     vr::EVRInitError e_error = vr::VRInitError_None;
-    p_hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
+    hmd_ = vr::VR_Init(&e_error, vr::VRApplication_Scene);
     if (e_error != vr::VRInitError_None) {
-      p_hmd_ = NULL;
+      hmd_ = NULL;
       throw std::runtime_error("VR_Init Failed");
     }
 
@@ -413,7 +380,6 @@ private:
     companion_window_ = glfwCreateWindow(WIDTH, HEIGHT, "VulkanVR", nullptr, nullptr);
 
     glfwSetWindowUserPointer(companion_window_, this);
-    glfwSetWindowSizeCallback(companion_window_, VulkanVRApplication::onWindowResized);
   }
 
   //---------------------------------------------------------------------------
@@ -446,10 +412,10 @@ private:
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &current_command_buffer_.command_buffer;
-    vkQueueSubmit(graphics_queue_, 1, &submit_info, current_command_buffer_.fence);
+    vkQueueSubmit(queue_, 1, &submit_info, current_command_buffer_.fence);
     command_buffers_.push_front(current_command_buffer_);
 
-    vkQueueWaitIdle(graphics_queue_);
+    vkQueueWaitIdle(queue_);
   }
 
   //---------------------------------------------------------------------------
@@ -470,36 +436,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: Cleaning up objects related to the swap chain
-  //---------------------------------------------------------------------------
-  void cleanupSwapChain() {
-    vkDestroyImageView(device_, depth_image_view_, nullptr);
-    vkDestroyImage(device_, depth_image_, nullptr);
-    vkFreeMemory(device_, depth_image_memory_, nullptr);
-
-    // delete before image views and render pass after rendering finishes
-    for (size_t i = 0; i < swapchain_framebuffers_.size(); i++) {
-      vkDestroyFramebuffer(device_, swapchain_framebuffers_[i], nullptr);
-    }
-
-    // free up the command buffers so we can reuse them
-    for (std::deque<VulkanCommandBuffer_t>::iterator i = command_buffers_.begin(); i != command_buffers_.end(); i++) {
-      vkFreeCommandBuffers(device_, command_pool_, 1, &i->command_buffer);
-      vkDestroyFence(device_, i->fence, nullptr);
-    }
-
-    //vkDestroyPipeline(device_, pipelines_, nullptr);
-    vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
-    vkDestroyRenderPass(device_, swapchain_render_pass_, nullptr);
-
-    for (size_t i = 0; i < swapchain_image_views_.size(); i++) {
-      vkDestroyImageView(device_, swapchain_image_views_[i], nullptr);
-    }
-
-    vkDestroySwapchainKHR(device_, swapchain_, nullptr);
-  }
-
-  //---------------------------------------------------------------------------
   // Purpose: Destroying all the Vulkan objects explicitly created by us
   //---------------------------------------------------------------------------
   void cleanup() {
@@ -507,9 +443,9 @@ private:
       vkDeviceWaitIdle(device_);
     }
 
-    if (p_hmd_) {
+    if (hmd_) {
       vr::VR_Shutdown();
-      p_hmd_ = NULL;
+      hmd_ = NULL;
     }
 
     if (device_ != VK_NULL_HANDLE) {
@@ -532,7 +468,7 @@ private:
         vkDestroyImage(device_, pFramebufferDescs[i]->depth_stencil_image, nullptr);
         vkFreeMemory(device_, pFramebufferDescs[i]->depth_stencil_device_memory, nullptr);
         vkDestroyRenderPass(device_, pFramebufferDescs[i]->render_pass, nullptr);
-        vkDestroyFramebuffer(device_, pFramebufferDescs[i]->frame_buffer, nullptr);
+        vkDestroyFramebuffer(device_, pFramebufferDescs[i]->framebuffer, nullptr);
       }
     }
 
@@ -581,31 +517,6 @@ private:
     // clean up resources and terminating GLFW
     glfwDestroyWindow(companion_window_);
     glfwTerminate();
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: resize the window and recreate the swap chain to fit
-  //---------------------------------------------------------------------------
-  static void onWindowResized(GLFWwindow* window, int width, int height) {
-    if (width == 0 || height == 0) { return; }
-
-    VulkanVRApplication* app = reinterpret_cast<VulkanVRApplication*>(glfwGetWindowUserPointer(window));
-    app->recreateSwapChain();
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: to recreate the swap chain when you for example, resize the window
-  //---------------------------------------------------------------------------
-  void recreateSwapChain() {
-    vkDeviceWaitIdle(device_); // wait until resources aren't in use
-
-    cleanupSwapChain();
-
-    InitVulkanSwapchain();
-    //createGraphicsPipeline();
-    createDepthResources();
-    createFramebuffers();
-    //createCommandBuffers();
   }
 
   //---------------------------------------------------------------------------
@@ -751,7 +662,7 @@ private:
     }
 
     // retrieving the queue handles for each queue family
-    vkGetDeviceQueue(device_, indices.graphics_family, 0, &graphics_queue_);
+    vkGetDeviceQueue(device_, indices.graphics_family, 0, &queue_);
     vkGetDeviceQueue(device_, indices.present_family, 0, &present_queue_);
   }
 
@@ -1178,103 +1089,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: set up resources for depth buffering
-  //---------------------------------------------------------------------------
-  void createDepthResources() {
-    VkFormat depth_format = findDepthFormat();
-
-    //createImage(swap_chain_extent_.width, swap_chain_extent_.height, depth_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_image_, depth_image_memory_);
-    //depth_image_view_ = createImageView(depth_image_, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    transitionImageLayout(depth_image_, depth_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: creating framebuffers for all the swap chain image views
-  //---------------------------------------------------------------------------
-  void createFramebuffers() {
-    swapchain_framebuffers_.resize(swapchain_image_views_.size());
-
-    // iterate through the image views and create framebuffers from them
-    for (size_t i = 0; i < swapchain_image_views_.size(); i++) {
-      std::array<VkImageView, 2> attachments = {
-        swapchain_image_views_[i],
-        depth_image_view_
-      };
-
-      VkFramebufferCreateInfo framebuffer_info = {};
-      framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-      framebuffer_info.renderPass = swapchain_render_pass_;
-      framebuffer_info.attachmentCount = static_cast<uint32_t>(attachments.size());
-      framebuffer_info.pAttachments = attachments.data();
-      framebuffer_info.width = swapchain_extent_.width;
-      framebuffer_info.height = swapchain_extent_.height;
-      framebuffer_info.layers = 1;
-
-      if (vkCreateFramebuffer(device_, &framebuffer_info, nullptr, &swapchain_framebuffers_[i]) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to create framebuffer!");
-      }
-    }
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: create an image for textures
-  //---------------------------------------------------------------------------
-  void setupTextures() {
-    // loading an image
-    int tex_width, tex_height, tex_channels;
-    stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
-    VkDeviceSize image_size = tex_width * tex_height * 4;
-
-    if (!pixels) {
-      throw std::runtime_error("Failed to load texture image!");
-    }
-
-    // copy image to temporary buffer
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
-    //createBuffer(image_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-
-    void* data;
-    vkMapMemory(device_, staging_buffer_memory, 0, image_size, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(image_size));
-    vkUnmapMemory(device_, staging_buffer_memory);
-
-    // free the image
-    stbi_image_free(pixels);
-
-    //createImage(tex_width, tex_height, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, texture_image_, texture_image_memory_);
-
-    transitionImageLayout(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_PREINITIALIZED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(staging_buffer, texture_image_, static_cast<uint32_t>(tex_width), static_cast<uint32_t>(tex_height));
-    transitionImageLayout(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-    vkDestroyBuffer(device_, staging_buffer, nullptr);
-    vkFreeMemory(device_, staging_buffer_memory, nullptr);
-
-    //texture_image_view_ = createImageView(texture_image_, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
-
-    VkSamplerCreateInfo sampler_info = {};
-    sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    sampler_info.magFilter = VK_FILTER_LINEAR;
-    sampler_info.minFilter = VK_FILTER_LINEAR;
-    sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sampler_info.anisotropyEnable = VK_TRUE;
-    sampler_info.maxAnisotropy = 16;
-    sampler_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    sampler_info.unnormalizedCoordinates = VK_FALSE;
-    sampler_info.compareEnable = VK_FALSE;
-    sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
-    sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-
-    if (vkCreateSampler(device_, &sampler_info, nullptr, &texture_sampler_) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create texture sampler!");
-    }
-  }
-
-  //---------------------------------------------------------------------------
   // Purpose: create an image for textures
   //---------------------------------------------------------------------------
   void setupTexturemaps() {
@@ -1410,7 +1224,7 @@ private:
   // Purpose: loading in the model from file and storing the vertices and indices
   //---------------------------------------------------------------------------
   void loadModel() {
-    if (!p_hmd_) {
+    if (!hmd_) {
       return;
     }
 
@@ -1423,8 +1237,6 @@ private:
     if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH.c_str())) {
       throw std::runtime_error(err);
     }
-
-    std::unordered_map<Vertex, uint32_t> uniqueVertices = {};
 
     // combine all of the faces into a single model
     for (const auto& shape : shapes) {
@@ -1446,15 +1258,16 @@ private:
         vertices_.push_back(vertex);
       }
     }
+    vert_count_ = vertices_.size();
 
     // Create the vertex buffer and fill with data
-    createBuffer(vertices_.size() * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_vertex_buffer_, scene_vertex_buffer_memory_);
+    createBuffer(vert_count_ * sizeof(float), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, scene_vertex_buffer_, scene_vertex_buffer_memory_);
 
     // Create the constant buffer to hold the per-eye constant buffer data
     for (uint32_t eye = 0; eye < 2; eye++) {
       VkBufferCreateInfo buffer_create_info = {};
       buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-      buffer_create_info.size = sizeof(glm::mat4);
+      buffer_create_info.size = sizeof(Matrix4);
       buffer_create_info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
       vkCreateBuffer(device_, &buffer_create_info, nullptr, &scene_constant_buffer_[eye]);
 
@@ -1471,82 +1284,6 @@ private:
 
       // Keep map persistently
       vkMapMemory(device_, scene_constant_buffer_memory_[eye], 0, VK_WHOLE_SIZE, 0, &scene_constant_buffer_data_[eye]);
-    }
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: create region of memory to store vertex buffer
-  //---------------------------------------------------------------------------
-  void createVertexBuffer() {
-    VkDeviceSize buffer_size = sizeof(vertices_[0]) * vertices_.size();
-
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
-    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-
-    // filling the vertex buffer
-    void* data;
-    vkMapMemory(device_, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, vertices_.data(), (size_t)buffer_size);
-    vkUnmapMemory(device_, staging_buffer_memory);
-
-    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertex_buffer_, vertex_buffer_memory_);
-
-    copyBuffer(staging_buffer, scene_vertex_buffer_, buffer_size);
-
-    vkDestroyBuffer(device_, staging_buffer, nullptr);
-    vkFreeMemory(device_, staging_buffer_memory, nullptr);
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: store indices for the geometry and send them to gpu buffer
-  //---------------------------------------------------------------------------
-  void createIndexBuffer() {
-    VkDeviceSize buffer_size = sizeof(indices_[0]) * indices_.size();
-
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
-    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-
-    void* data;
-    vkMapMemory(device_, staging_buffer_memory, 0, buffer_size, 0, &data);
-    memcpy(data, indices_.data(), (size_t)buffer_size);
-    vkUnmapMemory(device_, staging_buffer_memory);
-
-    //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer_, index_buffer_memory_);
-
-    copyBuffer(staging_buffer, companion_window_index_buffer_, buffer_size);
-
-    vkDestroyBuffer(device_, staging_buffer, nullptr);
-    vkFreeMemory(device_, staging_buffer_memory, nullptr);
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: buffer for the ubo data
-  //---------------------------------------------------------------------------
-  void createUniformBuffer() {
-    VkDeviceSize buffer_size = sizeof(UniformBufferObject);
-    //createBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffer_, uniform_buffer_memory_);
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: create a pool for the descriptor sets
-  //---------------------------------------------------------------------------
-  void createDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 2> pool_sizes = {};
-    pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_sizes[0].descriptorCount = 1;
-    pool_sizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    pool_sizes[1].descriptorCount = 1;
-
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
-    pool_info.pPoolSizes = pool_sizes.data();
-    pool_info.maxSets = 1;
-
-    if (vkCreateDescriptorPool(device_, &pool_info, nullptr, &descriptor_pool_) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to create descriptor pool!");
     }
   }
 
@@ -1639,48 +1376,12 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: creating semaphores to synchronise the rendering process
-  //---------------------------------------------------------------------------
-  void createSemaphores() {
-    VkSemaphoreCreateInfo semaphore_info = {};
-    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-    if (vkCreateSemaphore(device_, &semaphore_info, nullptr, &image_available_semaphore_) != VK_SUCCESS ||
-      vkCreateSemaphore(device_, &semaphore_info, nullptr, &render_finished_semaphore_) != VK_SUCCESS) {
-
-      throw std::runtime_error("Failed to create semaphores!");
-    }
-  }
-
-  //---------------------------------------------------------------------------
-  // Purpose: generate a new transformation every frame
-  //---------------------------------------------------------------------------
-  void updateUniformBuffer() {
-    static auto start_time = std::chrono::high_resolution_clock::now();
-
-    auto current_time = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - start_time).count() / 1000.0f;
-
-    UniformBufferObject ubo = {};
-    ubo.model = glm::rotate(glm::mat4(), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swapchain_extent_.width / (float)swapchain_extent_.height, 0.1f, 10.0f);
-    ubo.proj[1][1] *= -1; // flip the scaling factor of the Y axis in the projection matrix to take into account GLM's OpenGL layout
-
-                          // copy data to uniform buffer objects. push constants are an alternative to this and more efficient.
-    void* data;
-    vkMapMemory(device_, uniform_buffer_memory_, 0, sizeof(ubo), 0, &data);
-    memcpy(data, &ubo, sizeof(ubo));
-    vkUnmapMemory(device_, uniform_buffer_memory_);
-  }
-
-  //---------------------------------------------------------------------------
   // Purpose: acquire an image from the swap chain,...
   // ...execute the command buffer with that image as attachment in the framebuffer,...
   // ...return the image to the swapchain for presentation
   //---------------------------------------------------------------------------
   void drawFrame() {
-    if (p_hmd_) {
+    if (hmd_) {
       current_command_buffer_ = getCommandBuffer();
 
       // start the command buffer
@@ -1704,7 +1405,7 @@ private:
       submit_info.waitSemaphoreCount = 1;
       submit_info.pWaitSemaphores = &swapchain_semaphores_[frame_index_];
       submit_info.pWaitDstStageMask = &wait_dst_stage_mask;
-      vkQueueSubmit(graphics_queue_, 1, &submit_info, current_command_buffer_.fence);
+      vkQueueSubmit(queue_, 1, &submit_info, current_command_buffer_.fence);
 
       // Add the command buffer back for later recycling
       command_buffers_.push_front(current_command_buffer_);
@@ -1721,7 +1422,7 @@ private:
       vulkan_data.m_pDevice = (VkDevice_T *)device_;
       vulkan_data.m_pPhysicalDevice = (VkPhysicalDevice_T *)physical_device_;
       vulkan_data.m_pInstance = (VkInstance_T *)instance_;
-      vulkan_data.m_pQueue = (VkQueue_T *)graphics_queue_;
+      vulkan_data.m_pQueue = (VkQueue_T *)queue_;
 
       QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
 
@@ -1744,7 +1445,7 @@ private:
     present_info.swapchainCount = 1;
     present_info.pSwapchains = &swapchain_;
     present_info.pImageIndices = &current_swapchain_image_;
-    vkQueuePresentKHR(graphics_queue_, &present_info);
+    vkQueuePresentKHR(queue_, &present_info);
 
     updateHMDMatrixPose();
 
@@ -1800,7 +1501,7 @@ private:
     VkRenderPassBeginInfo render_pass_begin_info = {};
     render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     render_pass_begin_info.renderPass = left_eye_desc_.render_pass;
-    render_pass_begin_info.framebuffer = left_eye_desc_.frame_buffer;
+    render_pass_begin_info.framebuffer = left_eye_desc_.framebuffer;
     render_pass_begin_info.renderArea.offset.x = 0;
     render_pass_begin_info.renderArea.offset.y = 0;
     render_pass_begin_info.renderArea.extent.width = render_width_;
@@ -1858,7 +1559,7 @@ private:
 
     // Start the renderpass
     render_pass_begin_info.renderPass = right_eye_desc_.render_pass;
-    render_pass_begin_info.framebuffer = right_eye_desc_.frame_buffer;
+    render_pass_begin_info.framebuffer = right_eye_desc_.framebuffer;
     render_pass_begin_info.pClearValues = &clear_values[0];
     vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1968,7 +1669,7 @@ private:
   // Purpose: Update HMD Pose. From hellovr_vulkan in openVR SDK
   //---------------------------------------------------------------------------
   void updateHMDMatrixPose() {
-    if (!p_hmd_)
+    if (!hmd_)
       return;
 
     vr::VRCompositor()->WaitGetPoses(tracked_device_pose_, vr::k_unMaxTrackedDeviceCount, NULL, 0);
@@ -1980,7 +1681,7 @@ private:
         valid_pose_count_++;
         mat4_device_pose_[device] = convertSteamVRMatrixToMatrix4(tracked_device_pose_[device].mDeviceToAbsoluteTracking);
         if (dev_class_char[device] == 0) {
-          switch (p_hmd_->GetTrackedDeviceClass(device)) {
+          switch (hmd_->GetTrackedDeviceClass(device)) {
           case vr::TrackedDeviceClass_Controller:        dev_class_char[device] = 'C'; break;
           case vr::TrackedDeviceClass_HMD:               dev_class_char[device] = 'H'; break;
           case vr::TrackedDeviceClass_Invalid:           dev_class_char[device] = 'I'; break;
@@ -2002,7 +1703,7 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: Rendering the scene with respect to the eye position
   //---------------------------------------------------------------------------
-  void RenderScene(vr::Hmd_Eye nEye) {
+  void renderScene(vr::Hmd_Eye nEye) {
       vkCmdBindPipeline(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[PSO_SCENE]);
 
       // Update the persistently mapped pointer to the CB data with the latest matrix
@@ -2013,7 +1714,7 @@ private:
       // Draw
       VkDeviceSize nOffsets[1] = { 0 };
       vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &scene_vertex_buffer_, &nOffsets[0]);
-      vkCmdDraw(current_command_buffer_.command_buffer, vertices_.size(), 1, 0, 0);
+      vkCmdDraw(current_command_buffer_.command_buffer, vert_count_, 1, 0, 0);
   }
 
   //---------------------------------------------------------------------------
@@ -2398,8 +2099,8 @@ private:
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &command_buffer;
 
-    vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphics_queue_);
+    vkQueueSubmit(queue_, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue_);
 
     vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   }
@@ -2796,32 +2497,6 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: [VR] buffer for the ubo data
-  //---------------------------------------------------------------------------
-  void createPerEyeUniformBuffer() {
-    for (uint32_t eye = 0; eye < 2; eye++) {
-      VkBufferCreateInfo buffer_create_info = {};
-      buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-      buffer_create_info.size = sizeof(glm::mat4);
-      vkCreateBuffer(device_, &buffer_create_info, nullptr, &scene_uniform_buffer_[eye]);
-
-      VkMemoryRequirements memory_requirements = {};
-      vkGetBufferMemoryRequirements(device_, scene_uniform_buffer_[eye], &memory_requirements);
-
-      VkMemoryAllocateInfo alloc_info = {};
-      findMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
-      alloc_info.allocationSize = memory_requirements.size;
-
-      vkAllocateMemory(device_, &alloc_info, nullptr, &scene_uniform_buffer_memory_[eye]);
-      vkBindBufferMemory(device_, scene_uniform_buffer_[eye], scene_uniform_buffer_memory_[eye], 0);
-
-      void *data;
-
-      vkMapMemory(device_, scene_uniform_buffer_memory_[eye], 0, VK_WHOLE_SIZE, 0, &data);
-    }
-  }
-
-  //---------------------------------------------------------------------------
   // Purpose: [VR] Set eye and projection cameras
   //---------------------------------------------------------------------------
   void setupCameras() {
@@ -2835,8 +2510,8 @@ private:
   // Purpose: [VR] Get the projection matrix for the HMD eye
   //---------------------------------------------------------------------------
   Matrix4 getHMDMatrixProjectionEye(vr::Hmd_Eye eye) {
-    if (!p_hmd_) { return Matrix4(); }
-    vr::HmdMatrix44_t mat = p_hmd_->GetProjectionMatrix(eye, near_clip_, far_clip_);
+    if (!hmd_) { return Matrix4(); }
+    vr::HmdMatrix44_t mat = hmd_->GetProjectionMatrix(eye, near_clip_, far_clip_);
 
     return Matrix4(
       mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
@@ -2850,8 +2525,8 @@ private:
   // Purpose: [VR] Get the HMD eye position
   //---------------------------------------------------------------------------
   Matrix4 getHMDMatrixPoseEye(vr::Hmd_Eye eye) {
-    if (!p_hmd_) { return Matrix4(); }
-    vr::HmdMatrix34_t mat_eye_right = p_hmd_->GetEyeToHeadTransform(eye);
+    if (!hmd_) { return Matrix4(); }
+    vr::HmdMatrix34_t mat_eye_right = hmd_->GetEyeToHeadTransform(eye);
     Matrix4 matrix_obj(
       mat_eye_right.m[0][0], mat_eye_right.m[1][0], mat_eye_right.m[2][0], 0.0,
       mat_eye_right.m[0][1], mat_eye_right.m[1][1], mat_eye_right.m[2][1], 0.0,
@@ -2865,11 +2540,11 @@ private:
   // Purpose: [VR] Set up render targets
   //---------------------------------------------------------------------------
   void setupStereoRenderTargets() {
-    if (!p_hmd_) {
+    if (!hmd_) {
       throw std::runtime_error("Failed to set up render targets");
     }
 
-    p_hmd_->GetRecommendedRenderTargetSize(&render_width_, &render_height_);
+    hmd_->GetRecommendedRenderTargetSize(&render_width_, &render_height_);
     createFrameBufferDesc(render_width_, render_height_, left_eye_desc_);
     createFrameBufferDesc(render_width_, render_height_, right_eye_desc_);
   }
@@ -3006,7 +2681,7 @@ private:
     framebuffer_create_info.width = nWidth;
     framebuffer_create_info.height = nHeight;
     framebuffer_create_info.layers = 1;
-    vkCreateFramebuffer(device_, &framebuffer_create_info, NULL, &framebufferDesc.frame_buffer);
+    vkCreateFramebuffer(device_, &framebuffer_create_info, NULL, &framebufferDesc.framebuffer);
 
     framebufferDesc.image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
     framebufferDesc.depth_stencil_image_layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -3016,23 +2691,23 @@ private:
   // Purpose: [VR] Create Frame Buffer Descriptions for HMD Eyes
   //---------------------------------------------------------------------------
   void setupCompanionWindow() {
-    if (!p_hmd_) {
+    if (!hmd_) {
       return;
     }
 
     std::vector<VertexDataWindow> verts;
 
     // left eye verts
-    verts.push_back(VertexDataWindow(glm::vec2(-1, -1), glm::vec2(0, 1)));
-    verts.push_back(VertexDataWindow(glm::vec2(0, -1), glm::vec2(1, 1)));
-    verts.push_back(VertexDataWindow(glm::vec2(-1, 1), glm::vec2(0, 0)));
-    verts.push_back(VertexDataWindow(glm::vec2(0, 1), glm::vec2(1, 0)));
+    verts.push_back(VertexDataWindow(Vector2(-1, -1), Vector2(0, 1)));
+    verts.push_back(VertexDataWindow(Vector2(0, -1), Vector2(1, 1)));
+    verts.push_back(VertexDataWindow(Vector2(-1, 1), Vector2(0, 0)));
+    verts.push_back(VertexDataWindow(Vector2(0, 1), Vector2(1, 0)));
 
     // right eye verts
-    verts.push_back(VertexDataWindow(glm::vec2(0, -1), glm::vec2(0, 1)));
-    verts.push_back(VertexDataWindow(glm::vec2(1, -1), glm::vec2(1, 1)));
-    verts.push_back(VertexDataWindow(glm::vec2(0, 1), glm::vec2(0, 0)));
-    verts.push_back(VertexDataWindow(glm::vec2(1, 1), glm::vec2(1, 0)));
+    verts.push_back(VertexDataWindow(Vector2(0, -1), Vector2(0, 1)));
+    verts.push_back(VertexDataWindow(Vector2(1, -1), Vector2(1, 1)));
+    verts.push_back(VertexDataWindow(Vector2(0, 1), Vector2(0, 0)));
+    verts.push_back(VertexDataWindow(Vector2(1, 1), Vector2(1, 0)));
 
     createBuffer(sizeof(VertexDataWindow) * verts.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, companion_window_vertex_buffer_, companion_window_vertex_buffer_memory_);
