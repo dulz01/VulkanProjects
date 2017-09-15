@@ -29,6 +29,7 @@
 #include <array>
 #include <set>
 #include <unordered_map>
+#include "Matrices.h"
 
 const int WIDTH = 640;
 const int HEIGHT = 320;
@@ -288,10 +289,10 @@ private:
 
   std::vector<Vertex> vertices_;
   std::vector<uint32_t> indices_;
-  VkBuffer companion_screen_vertex_buffer_;
-  VkDeviceMemory companion_screen_vertex_buffer_memory_;
-  VkBuffer companion_screen_index_buffer_;
-  VkDeviceMemory companion_screen_index_buffer_memory_;
+  VkBuffer companion_window_vertex_buffer_;
+  VkDeviceMemory companion_window_vertex_buffer_memory_;
+  VkBuffer companion_window_index_buffer_;
+  VkDeviceMemory companion_window_index_buffer_memory_;
   VkBuffer uniform_buffer_;
   VkDeviceMemory uniform_buffer_memory_;
 
@@ -312,8 +313,9 @@ private:
   int valid_pose_count_;
   std::string str_pose_classes_;
   char dev_class_char[vr::k_unMaxTrackedDeviceCount];
-  glm::mat4 mat4_device_pose_[vr::k_unMaxTrackedDeviceCount];
-  glm::mat4 mat4_hmd_pose_;
+  Matrix4 mat4_device_pose_[vr::k_unMaxTrackedDeviceCount];
+  Matrix4 mat4_hmd_pose_;
+
 
   struct FramebufferDesc {
     VkImage image;
@@ -333,10 +335,10 @@ private:
   VkBuffer scene_uniform_buffer_[2];
   VkDeviceMemory scene_uniform_buffer_memory_[2];
 
-  glm::mat4 mat4_proj_left_;
-  glm::mat4 mat4_proj_right_;
-  glm::mat4 mat4_eye_pos_left_;
-  glm::mat4 mat4_eye_pos_right_;
+  Matrix4 mat4_proj_left_;
+  Matrix4 mat4_proj_right_;
+  Matrix4 mat4_eye_pos_left_;
+  Matrix4 mat4_eye_pos_right_;
 
   float near_clip_;
   float far_clip_;
@@ -369,6 +371,7 @@ private:
     VertexDataWindow(const glm::vec2 &pos, const glm::vec2 tex) : position(pos), tex_coord(tex) {}
   };
   unsigned int companion_window_index_size_;
+  unsigned int vert_count_;
 
   struct VertexDataScene {
     glm::vec3 position;
@@ -401,7 +404,7 @@ private:
     far_clip_ = 30.0f;
 
     companion_window_index_size_ = 0;
-
+    frame_index_ = 0;
     //----------------//
     // End of VR code //
     //----------------//
@@ -500,13 +503,24 @@ private:
   // Purpose: Destroying all the Vulkan objects explicitly created by us
   //---------------------------------------------------------------------------
   void cleanup() {
-    //---------//
-    // VR code //
-    //---------//
+    if (device_ != VK_NULL_HANDLE) {
+      vkDeviceWaitIdle(device_);
+    }
+
     if (p_hmd_) {
       vr::VR_Shutdown();
       p_hmd_ = NULL;
     }
+
+    if (device_ != VK_NULL_HANDLE) {
+      for (std::deque<VulkanCommandBuffer_t>::iterator i = command_buffers_.begin(); i != command_buffers_.end(); i++) {
+        vkFreeCommandBuffers(device_, command_pool_, 1, &i->command_buffer);
+        vkDestroyFence(device_, i->fence, nullptr);
+      }
+    }
+
+    vkDestroyCommandPool(device_, command_pool_, nullptr);
+    vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
 
     FramebufferDesc *pFramebufferDescs[2] = { &left_eye_desc_, &right_eye_desc_ };
     for (int32_t i = 0; i < 2; i++) {
@@ -522,51 +536,47 @@ private:
       }
     }
 
-    for (uint32_t eye = 0; eye < 2; eye++) {
-      if (scene_uniform_buffer_[eye] != VK_NULL_HANDLE) {
-        vkDestroyBuffer(device_, scene_uniform_buffer_[eye], nullptr);
-        scene_uniform_buffer_[eye] = VK_NULL_HANDLE;
-      }
-
-      if (scene_uniform_buffer_memory_ != VK_NULL_HANDLE) {
-        vkFreeMemory(device_, scene_uniform_buffer_memory_[eye], nullptr);
-        scene_uniform_buffer_memory_[eye] = VK_NULL_HANDLE;
-      }
-    }
-    //----------------//
-    // End of VR code //
-    //----------------//
-
-    cleanupSwapChain(); // must be done before device
-
-    vkDestroySampler(device_, texture_sampler_, nullptr);
-    vkDestroyImageView(device_, texture_image_view_, nullptr);
-
-    vkDestroyImage(device_, texture_image_, nullptr);
-    vkFreeMemory(device_, texture_image_memory_, nullptr);
-
-    vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
-
-    vkDestroyDescriptorSetLayout(device_, descriptor_set_layout_, nullptr);
-    vkDestroyBuffer(device_, uniform_buffer_, nullptr);
-    vkFreeMemory(device_, uniform_buffer_memory_, nullptr);
-
-    vkDestroyBuffer(device_, companion_screen_index_buffer_, nullptr);
-    vkFreeMemory(device_, companion_screen_index_buffer_memory_, nullptr);
-
+    vkDestroyImageView(device_, scene_image_view_, nullptr);
+    vkDestroyImage(device_, scene_image_, nullptr);
+    vkFreeMemory(device_, scene_image_memory_, nullptr);
+    vkDestroySampler(device_, scene_sampler_, nullptr);
     vkDestroyBuffer(device_, scene_vertex_buffer_, nullptr);
     vkFreeMemory(device_, scene_vertex_buffer_memory_, nullptr);
 
-    vkDestroySemaphore(device_, render_finished_semaphore_, nullptr);
-    vkDestroySemaphore(device_, image_available_semaphore_, nullptr);
+    for (uint32_t eye = 0; eye < _countof(scene_constant_buffer_); eye++) {
+      vkDestroyBuffer(device_, scene_constant_buffer_[eye], nullptr);
+      vkFreeMemory(device_, scene_constant_buffer_memory_[eye], nullptr);
+    }
 
-    vkDestroyCommandPool(device_, command_pool_, nullptr);
+    vkDestroyBuffer(device_, companion_window_vertex_buffer_, nullptr);
+    vkFreeMemory(device_, companion_window_vertex_buffer_memory_, nullptr);
+    vkDestroyBuffer(device_, companion_window_index_buffer_, nullptr);
+    vkFreeMemory(device_, companion_window_index_buffer_memory_, nullptr);
 
-    vkDestroyDevice(device_, nullptr);
+    vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
+    vkDestroyDescriptorSetLayout(device_, descriptor_set_layout_, nullptr);
+
+    for (uint32_t PSO = 0; PSO < PSO_COUNT; PSO++) {
+      vkDestroyPipeline(device_, pipelines_[PSO], nullptr);
+    }
+    for (uint32_t shader = 0; shader < _countof(shader_modules_); shader++) {
+      vkDestroyShaderModule(device_, shader_modules_[shader], nullptr);
+    }
+    vkDestroyPipelineCache(device_, pipeline_cache_, nullptr);
+
     DestroyDebugReportCallbackEXT(instance_, callback_, nullptr);
 
-    vkDestroySurfaceKHR(instance_, surface_, nullptr); // must be destroyed before the instance
-    vkDestroyInstance(instance_, nullptr); // must be destroyed right before the program exits
+    for (size_t swapchain_index = 0; swapchain_index < swapchain_framebuffers_.size(); swapchain_index++) {
+      vkDestroyFramebuffer(device_, swapchain_framebuffers_[swapchain_index], nullptr);
+      vkDestroyImageView(device_, swapchain_image_views_[swapchain_index], nullptr);
+      vkDestroySemaphore(device_, swapchain_semaphores_[swapchain_index], nullptr);
+    }
+    vkDestroyRenderPass(device_, swapchain_render_pass_, nullptr);
+
+    vkDestroySwapchainKHR(device_, swapchain_, nullptr);
+    vkDestroySurfaceKHR(instance_, surface_, nullptr);
+    vkDestroyDevice(device_, nullptr);
+    vkDestroyInstance(instance_, nullptr);
 
     // clean up resources and terminating GLFW
     glfwDestroyWindow(companion_window_);
@@ -766,15 +776,15 @@ private:
     }
 
     // filling out the Vulkan object structure for the swap chain
-    VkSwapchainCreateInfoKHR create_info = {};
-    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    create_info.surface = surface_;
-    create_info.minImageCount = image_count;
-    create_info.imageFormat = surface_format.format;
-    create_info.imageColorSpace = surface_format.colorSpace;
-    create_info.imageExtent = extent;
-    create_info.imageArrayLayers = 1; // always set to 1 unless developing stereoscopic 3D application
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;  // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
+    VkSwapchainCreateInfoKHR swapchain_create_info = {};
+    swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchain_create_info.surface = surface_;
+    swapchain_create_info.minImageCount = image_count;
+    swapchain_create_info.imageFormat = surface_format.format;
+    swapchain_create_info.imageColorSpace = surface_format.colorSpace;
+    swapchain_create_info.imageExtent = extent;
+    swapchain_create_info.imageArrayLayers = 1; // always set to 1 unless developing stereoscopic 3D application
+    swapchain_create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;  // VK_IMAGE_USAGE_TRANSFER_DST_BIT makes it so that you render to a separate image first for post processing
 
     // specifying how to handle swap chain images across multiple queue families
     QueueFamilyIndices indices = findQueueFamilies(physical_device_);
@@ -784,22 +794,24 @@ private:
 
     // VK_SHARING_MODE_CONCURRENT allows images to be shared among multiple queue families
     if (indices.graphics_family != indices.present_family) {
-      create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-      create_info.queueFamilyIndexCount = 2;
-      create_info.pQueueFamilyIndices = queue_family_indices;
+      swapchain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+      swapchain_create_info.queueFamilyIndexCount = 2;
+      swapchain_create_info.pQueueFamilyIndices = queue_family_indices;
     }
 
     // VK_SHARING_MODE_EXCLUSIVE makes it so an image has to be explicitly transferred from one queue family to another
     else {
-      create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      swapchain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      swapchain_create_info.queueFamilyIndexCount = 0;
+      swapchain_create_info.pQueueFamilyIndices = NULL;
     }
 
-    create_info.preTransform = swap_chain_support.capabilities.currentTransform; // transforms applied to images in the swap chain
-    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // almost always want to ignore the alpha channel
-    create_info.presentMode = present_mode;
-    create_info.clipped = VK_TRUE; // obscured pixels won't be calculated
+    swapchain_create_info.preTransform = swap_chain_support.capabilities.currentTransform; // transforms applied to images in the swap chain
+    swapchain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // almost always want to ignore the alpha channel
+    swapchain_create_info.presentMode = present_mode;
+    swapchain_create_info.clipped = VK_TRUE; // obscured pixels won't be calculated
 
-    if (vkCreateSwapchainKHR(device_, &create_info, nullptr, &swapchain_) != VK_SUCCESS) {
+    if (vkCreateSwapchainKHR(device_, &swapchain_create_info, nullptr, &swapchain_) != VK_SUCCESS) {
       throw std::runtime_error("Failed to create swap chain");
     }
 
@@ -1503,7 +1515,7 @@ private:
 
     //createBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, index_buffer_, index_buffer_memory_);
 
-    copyBuffer(staging_buffer, companion_screen_index_buffer_, buffer_size);
+    copyBuffer(staging_buffer, companion_window_index_buffer_, buffer_size);
 
     vkDestroyBuffer(device_, staging_buffer, nullptr);
     vkFreeMemory(device_, staging_buffer_memory, nullptr);
@@ -1920,8 +1932,8 @@ private:
 
     // Draw left eye texture to companion window
     VkDeviceSize nOffsets[1] = { 0 };
-    vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &companion_screen_vertex_buffer_, &nOffsets[0]);
-    vkCmdBindIndexBuffer(current_command_buffer_.command_buffer, companion_screen_index_buffer_, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &companion_window_vertex_buffer_, &nOffsets[0]);
+    vkCmdBindIndexBuffer(current_command_buffer_.command_buffer, companion_window_index_buffer_, 0, VK_INDEX_TYPE_UINT16);
     vkCmdDrawIndexed(current_command_buffer_.command_buffer, companion_window_index_size_ / 2, 1, 0, 0, 0);
 
     // Draw right eye texture to companion window
@@ -1983,9 +1995,42 @@ private:
 
     if (tracked_device_pose_[vr::k_unTrackedDeviceIndex_Hmd].bPoseIsValid) {
       mat4_hmd_pose_ = mat4_device_pose_[vr::k_unTrackedDeviceIndex_Hmd];
-      glm::inverse(mat4_hmd_pose_);
+      mat4_hmd_pose_.invert();
     }
   }
+
+  //---------------------------------------------------------------------------
+  // Purpose: Rendering the scene with respect to the eye position
+  //---------------------------------------------------------------------------
+  void RenderScene(vr::Hmd_Eye nEye) {
+      vkCmdBindPipeline(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[PSO_SCENE]);
+
+      // Update the persistently mapped pointer to the CB data with the latest matrix
+      memcpy(scene_constant_buffer_data_[nEye], getCurrentViewProjectionMatrix(nEye).get(), sizeof(Matrix4));
+
+      vkCmdBindDescriptorSets(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + nEye], 0, nullptr);
+
+      // Draw
+      VkDeviceSize nOffsets[1] = { 0 };
+      vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &scene_vertex_buffer_, &nOffsets[0]);
+      vkCmdDraw(current_command_buffer_.command_buffer, vertices_.size(), 1, 0, 0);
+  }
+
+  //---------------------------------------------------------------------------
+  // Purpose: 
+  //---------------------------------------------------------------------------
+  Matrix4 getCurrentViewProjectionMatrix(vr::Hmd_Eye eye) {
+    Matrix4 mat4MVP;
+    if (eye == vr::Eye_Left) {
+      mat4MVP = mat4_proj_left_ * mat4_eye_pos_left_ * mat4_hmd_pose_;
+    }
+    else if (eye == vr::Eye_Right) {
+      mat4MVP = mat4_proj_right_ * mat4_eye_pos_right_ *  mat4_hmd_pose_;
+    }
+
+    return mat4MVP;
+  }
+
   //-------------------------------------------------------------------------//
   //-------------------------------------------------------------------------//
   //                           HELPER FUNCTIONS                              //
@@ -2134,8 +2179,8 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: convert SteamVR Matrix To Matrix 4
   //---------------------------------------------------------------------------
-  glm::mat4 convertSteamVRMatrixToMatrix4(const vr::HmdMatrix34_t &matPose) {
-    glm::mat4 matrixObj(
+  Matrix4 convertSteamVRMatrixToMatrix4(const vr::HmdMatrix34_t &matPose) {
+    Matrix4 matrixObj(
       matPose.m[0][0], matPose.m[1][0], matPose.m[2][0], 0.0,
       matPose.m[0][1], matPose.m[1][1], matPose.m[2][1], 0.0,
       matPose.m[0][2], matPose.m[1][2], matPose.m[2][2], 0.0,
@@ -2789,11 +2834,11 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: [VR] Get the projection matrix for the HMD eye
   //---------------------------------------------------------------------------
-  glm::mat4 getHMDMatrixProjectionEye(vr::Hmd_Eye eye) {
-    if (!p_hmd_) { return glm::mat4(); }
+  Matrix4 getHMDMatrixProjectionEye(vr::Hmd_Eye eye) {
+    if (!p_hmd_) { return Matrix4(); }
     vr::HmdMatrix44_t mat = p_hmd_->GetProjectionMatrix(eye, near_clip_, far_clip_);
 
-    return glm::mat4(
+    return Matrix4(
       mat.m[0][0], mat.m[1][0], mat.m[2][0], mat.m[3][0],
       mat.m[0][1], mat.m[1][1], mat.m[2][1], mat.m[3][1],
       mat.m[0][2], mat.m[1][2], mat.m[2][2], mat.m[3][2],
@@ -2804,16 +2849,16 @@ private:
   //---------------------------------------------------------------------------
   // Purpose: [VR] Get the HMD eye position
   //---------------------------------------------------------------------------
-  glm::mat4 getHMDMatrixPoseEye(vr::Hmd_Eye eye) {
-    if (!p_hmd_) { return glm::mat4(); }
+  Matrix4 getHMDMatrixPoseEye(vr::Hmd_Eye eye) {
+    if (!p_hmd_) { return Matrix4(); }
     vr::HmdMatrix34_t mat_eye_right = p_hmd_->GetEyeToHeadTransform(eye);
-    glm::mat4 matrix_obj(
+    Matrix4 matrix_obj(
       mat_eye_right.m[0][0], mat_eye_right.m[1][0], mat_eye_right.m[2][0], 0.0,
       mat_eye_right.m[0][1], mat_eye_right.m[1][1], mat_eye_right.m[2][1], 0.0,
       mat_eye_right.m[0][2], mat_eye_right.m[1][2], mat_eye_right.m[2][2], 0.0,
       mat_eye_right.m[0][3], mat_eye_right.m[1][3], mat_eye_right.m[2][3], 1.0f
     );
-    return glm::inverse(matrix_obj);
+    return matrix_obj.invert();
   }
 
   //---------------------------------------------------------------------------
@@ -2990,12 +3035,12 @@ private:
     verts.push_back(VertexDataWindow(glm::vec2(1, 1), glm::vec2(1, 0)));
 
     createBuffer(sizeof(VertexDataWindow) * verts.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, companion_screen_vertex_buffer_, companion_screen_vertex_buffer_memory_);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, companion_window_vertex_buffer_, companion_window_vertex_buffer_memory_);
 
     uint16_t indices[] = { 0, 1, 3,   0, 3, 2,   4, 5, 7,   4, 7, 6 };
     companion_window_index_size_ = _countof(indices);
     createBuffer(sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      companion_screen_index_buffer_, companion_screen_index_buffer_memory_);
+      companion_window_index_buffer_, companion_window_index_buffer_memory_);
 
     // Transition all of the swapchain images to PRESENT_SRC so they are ready for presentation
     QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
