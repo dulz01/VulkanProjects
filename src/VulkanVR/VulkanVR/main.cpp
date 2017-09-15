@@ -195,6 +195,17 @@ enum PipelineStateObjectEnum_t {
 };
 
 //-----------------------------------------------------------------------------
+// Purpose: Descriptor sets for rendering
+//-----------------------------------------------------------------------------
+enum DescriptorSetIndex_t {
+  DESCRIPTOR_SET_LEFT_EYE_SCENE = 0,
+  DESCRIPTOR_SET_RIGHT_EYE_SCENE,
+  DESCRIPTOR_SET_COMPANION_LEFT_TEXTURE,
+  DESCRIPTOR_SET_COMPANION_RIGHT_TEXTURE,
+  NUM_DESCRIPTOR_SETS
+};
+
+//-----------------------------------------------------------------------------
 // Purpose: main application
 //-----------------------------------------------------------------------------
 class VulkanVRApplication {
@@ -264,7 +275,7 @@ private:
   VkDeviceMemory uniform_buffer_memory_;
 
   VkDescriptorPool descriptor_pool_;
-  VkDescriptorSet descriptor_set_;
+  VkDescriptorSet descriptor_sets_[NUM_DESCRIPTOR_SETS];
 
   //std::vector<VkCommandBuffer> command_buffers_;
 
@@ -404,6 +415,8 @@ private:
     setupStereoRenderTargets();
     setupCompanionWindow();
     createGraphicsPipeline();
+    createDescriptorSets();
+
 
     vkEndCommandBuffer(current_command_buffer_.command_buffer);
     VkSubmitInfo submit_info = {};
@@ -1661,49 +1674,137 @@ private:
   }
 
   //---------------------------------------------------------------------------
+  // Purpose: allocating descriptor sets (LEGACY)
+  //---------------------------------------------------------------------------
+  //void createDescriptorSets() {
+  //  VkDescriptorSetLayout layouts[] = { descriptor_set_layout_ };
+  //  VkDescriptorSetAllocateInfo alloc_info = {};
+  //  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  //  alloc_info.descriptorPool = descriptor_pool_;
+  //  alloc_info.descriptorSetCount = 1;
+  //  alloc_info.pSetLayouts = layouts;
+
+  //  if (vkAllocateDescriptorSets(device_, &alloc_info, &descriptor_sets_) != VK_SUCCESS) {
+  //    throw std::runtime_error("Failed to allocate descriptor set!");
+  //  }
+
+  //  VkDescriptorBufferInfo buffer_info = {};
+  //  buffer_info.buffer = uniform_buffer_;
+  //  buffer_info.offset = 0;
+  //  buffer_info.range = sizeof(UniformBufferObject);
+
+  //  VkDescriptorImageInfo image_info = {};
+  //  image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  //  image_info.imageView = texture_image_view_;
+  //  image_info.sampler = texture_sampler_;
+
+  //  std::array<VkWriteDescriptorSet, 2> descriptor_writes = {};
+
+  //  descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  //  descriptor_writes[0].dstSet = descriptor_sets_;
+  //  descriptor_writes[0].dstBinding = 0;
+  //  descriptor_writes[0].dstArrayElement = 0;
+  //  descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+  //  descriptor_writes[0].descriptorCount = 1;
+  //  descriptor_writes[0].pBufferInfo = &buffer_info;
+
+  //  descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  //  descriptor_writes[1].dstSet = descriptor_sets_;
+  //  descriptor_writes[1].dstBinding = 1;
+  //  descriptor_writes[1].dstArrayElement = 0;
+  //  descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+  //  descriptor_writes[1].descriptorCount = 1;
+  //  descriptor_writes[1].pImageInfo = &image_info;
+
+  //  vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
+  //}
+
+  //---------------------------------------------------------------------------
   // Purpose: allocating descriptor sets
   //---------------------------------------------------------------------------
-  void createDescriptorSet() {
-    VkDescriptorSetLayout layouts[] = { descriptor_set_layout_ };
-    VkDescriptorSetAllocateInfo alloc_info = {};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = descriptor_pool_;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = layouts;
+  void createDescriptorSets() {
+    VkDescriptorPoolSize pool_sizes[3];
+    pool_sizes[0].descriptorCount = NUM_DESCRIPTOR_SETS;
+    pool_sizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_sizes[1].descriptorCount = NUM_DESCRIPTOR_SETS;
+    pool_sizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    pool_sizes[2].descriptorCount = NUM_DESCRIPTOR_SETS;
+    pool_sizes[2].type = VK_DESCRIPTOR_TYPE_SAMPLER;
 
-    if (vkAllocateDescriptorSets(device_, &alloc_info, &descriptor_set_) != VK_SUCCESS) {
-      throw std::runtime_error("Failed to allocate descriptor set!");
+    VkDescriptorPoolCreateInfo descriptor_pool_create_info = {};
+    descriptor_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptor_pool_create_info.flags = 0;
+    descriptor_pool_create_info.maxSets = NUM_DESCRIPTOR_SETS;
+    descriptor_pool_create_info.poolSizeCount = _countof(pool_sizes);
+    descriptor_pool_create_info.pPoolSizes = &pool_sizes[0];
+
+    vkCreateDescriptorPool(device_, &descriptor_pool_create_info, nullptr, &descriptor_pool_);
+
+    for (int descriptor_set = 0; descriptor_set < NUM_DESCRIPTOR_SETS; descriptor_set++) {
+      VkDescriptorSetAllocateInfo alloc_info = {};
+      alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+      alloc_info.descriptorPool = descriptor_pool_;
+      alloc_info.descriptorSetCount = 1;
+      alloc_info.pSetLayouts = &descriptor_set_layout_;
+      vkAllocateDescriptorSets(device_, &alloc_info, &descriptor_sets_[descriptor_set]);
     }
 
-    VkDescriptorBufferInfo buffer_info = {};
-    buffer_info.buffer = uniform_buffer_;
-    buffer_info.offset = 0;
-    buffer_info.range = sizeof(UniformBufferObject);
+    // Scene descriptor sets
+    for (uint32_t eye = 0; eye < 2; eye++) {
+      VkDescriptorBufferInfo bufferInfo = {};
+      bufferInfo.buffer = scene_constant_buffer_[eye];
+      bufferInfo.offset = 0;
+      bufferInfo.range = VK_WHOLE_SIZE;
 
-    VkDescriptorImageInfo image_info = {};
-    image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    image_info.imageView = texture_image_view_;
-    image_info.sampler = texture_sampler_;
+      VkDescriptorImageInfo image_info = {};
+      image_info.imageView = scene_image_view_;
+      image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    std::array<VkWriteDescriptorSet, 2> descriptor_writes = {};
+      VkDescriptorImageInfo sampler_info = {};
+      sampler_info.sampler = scene_sampler_;
 
-    descriptor_writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[0].dstSet = descriptor_set_;
-    descriptor_writes[0].dstBinding = 0;
-    descriptor_writes[0].dstArrayElement = 0;
-    descriptor_writes[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptor_writes[0].descriptorCount = 1;
-    descriptor_writes[0].pBufferInfo = &buffer_info;
+      VkWriteDescriptorSet write_descriptor_sets[3] = {};
+      write_descriptor_sets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write_descriptor_sets[0].dstSet = descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + eye];
+      write_descriptor_sets[0].dstBinding = 0;
+      write_descriptor_sets[0].descriptorCount = 1;
+      write_descriptor_sets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+      write_descriptor_sets[0].pBufferInfo = &bufferInfo;
+      write_descriptor_sets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write_descriptor_sets[1].dstSet = descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + eye];
+      write_descriptor_sets[1].dstBinding = 1;
+      write_descriptor_sets[1].descriptorCount = 1;
+      write_descriptor_sets[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+      write_descriptor_sets[1].pImageInfo = &image_info;
+      write_descriptor_sets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write_descriptor_sets[2].dstSet = descriptor_sets_[DESCRIPTOR_SET_LEFT_EYE_SCENE + eye];
+      write_descriptor_sets[2].dstBinding = 2;
+      write_descriptor_sets[2].descriptorCount = 1;
+      write_descriptor_sets[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+      write_descriptor_sets[2].pImageInfo = &sampler_info;
 
-    descriptor_writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptor_writes[1].dstSet = descriptor_set_;
-    descriptor_writes[1].dstBinding = 1;
-    descriptor_writes[1].dstArrayElement = 0;
-    descriptor_writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    descriptor_writes[1].descriptorCount = 1;
-    descriptor_writes[1].pImageInfo = &image_info;
+      vkUpdateDescriptorSets(device_, _countof(write_descriptor_sets), write_descriptor_sets, 0, nullptr);
+    }
 
-    vkUpdateDescriptorSets(device_, static_cast<uint32_t>(descriptor_writes.size()), descriptor_writes.data(), 0, nullptr);
+    // Companion window descriptor sets
+    {
+      VkDescriptorImageInfo imageInfo = {};
+      imageInfo.imageView = left_eye_desc_.image_view;
+      imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+      VkWriteDescriptorSet write_descriptor_sets[1] = {};
+      write_descriptor_sets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      write_descriptor_sets[0].dstSet = descriptor_sets_[DESCRIPTOR_SET_COMPANION_LEFT_TEXTURE];
+      write_descriptor_sets[0].dstBinding = 1;
+      write_descriptor_sets[0].descriptorCount = 1;
+      write_descriptor_sets[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+      write_descriptor_sets[0].pImageInfo = &imageInfo;
+      vkUpdateDescriptorSets(device_, _countof(write_descriptor_sets), write_descriptor_sets, 0, nullptr);
+
+      imageInfo.imageView = right_eye_desc_.image_view;
+      write_descriptor_sets[0].dstSet = descriptor_sets_[DESCRIPTOR_SET_COMPANION_RIGHT_TEXTURE];
+      vkUpdateDescriptorSets(device_, _countof(write_descriptor_sets), write_descriptor_sets, 0, nullptr);
+    }
   }
 
   //---------------------------------------------------------------------------
@@ -1883,7 +1984,7 @@ private:
       vkBeginCommandBuffer(current_command_buffer_.command_buffer, &command_buffer_begin_info);
 
        renderStereoTargets();
-      // renderCompanionWindow();
+       renderCompanionWindow();
 
       // end the command buffer
       vkEndCommandBuffer(current_command_buffer_.command_buffer);
@@ -1945,7 +2046,7 @@ private:
   }
 
   //---------------------------------------------------------------------------
-  // Purpose: creating a temporary command buffer for memory operations
+  // Purpose: Render for VR headset
   //---------------------------------------------------------------------------
   void renderStereoTargets() {
     // set the viewport and scissor
@@ -2070,7 +2171,90 @@ private:
     right_eye_desc_.image_layout = image_memory_barrier.newLayout;
   }
 
-  // renderCompanionWindow();
+  void renderCompanionWindow() {
+    if (vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, swapchain_semaphores_[frame_index_], VK_NULL_HANDLE, &current_swapchain_image_) != VK_SUCCESS) {
+      return;
+    }
+
+    QueueFamilyIndices queue_family_indices = findQueueFamilies(physical_device_);
+
+    // Transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL for rendering
+    VkImageMemoryBarrier image_memory_barrier = { VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+    image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    image_memory_barrier.image = swapchain_images_[current_swapchain_image_];
+    image_memory_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    image_memory_barrier.subresourceRange.baseMipLevel = 0;
+    image_memory_barrier.subresourceRange.levelCount = 1;
+    image_memory_barrier.subresourceRange.baseArrayLayer = 0;
+    image_memory_barrier.subresourceRange.layerCount = 1;
+    image_memory_barrier.srcQueueFamilyIndex = queue_family_indices.graphics_family;
+    image_memory_barrier.dstQueueFamilyIndex = queue_family_indices.graphics_family;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+
+    // Start the renderpass
+    VkRenderPassBeginInfo render_pass_begin_info = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
+    render_pass_begin_info.renderPass = swapchain_render_pass_;
+    render_pass_begin_info.framebuffer = swapchain_framebuffers_[current_swapchain_image_];
+    render_pass_begin_info.renderArea.offset.x = 0;
+    render_pass_begin_info.renderArea.offset.y = 0;
+    render_pass_begin_info.renderArea.extent.width = WIDTH;
+    render_pass_begin_info.renderArea.extent.height = HEIGHT;
+    VkClearValue clear_values[1]; 
+    clear_values[0].color.float32[0] = 0.0f;
+    clear_values[0].color.float32[1] = 0.0f;
+    clear_values[0].color.float32[2] = 0.0f;
+    clear_values[0].color.float32[3] = 1.0f;
+    render_pass_begin_info.clearValueCount = _countof(clear_values);
+    render_pass_begin_info.pClearValues = &clear_values[0];
+    vkCmdBeginRenderPass(current_command_buffer_.command_buffer, &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    // Set viewport/scissor
+    VkViewport viewport = { 0.0f, 0.0f, (float)WIDTH, (float)HEIGHT, 0.0f, 1.0f };
+    vkCmdSetViewport(current_command_buffer_.command_buffer, 0, 1, &viewport);
+    VkRect2D scissor = { 0, 0, WIDTH, HEIGHT };
+    vkCmdSetScissor(current_command_buffer_.command_buffer, 0, 1, &scissor);
+
+    // Bind the pipeline and descriptor set
+    vkCmdBindPipeline(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines_[PSO_COMPANION]);
+    vkCmdBindDescriptorSets(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_sets_[DESCRIPTOR_SET_COMPANION_LEFT_TEXTURE], 0, nullptr);
+
+    // Draw left eye texture to companion window
+    VkDeviceSize nOffsets[1] = { 0 };
+    vkCmdBindVertexBuffers(current_command_buffer_.command_buffer, 0, 1, &companion_screen_vertex_buffer_, &nOffsets[0]);
+    vkCmdBindIndexBuffer(current_command_buffer_.command_buffer, companion_screen_index_buffer_, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(current_command_buffer_.command_buffer, companion_window_index_size_ / 2, 1, 0, 0, 0);
+
+    // Draw right eye texture to companion window
+    vkCmdBindDescriptorSets(current_command_buffer_.command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout_, 0, 1, &descriptor_sets_[DESCRIPTOR_SET_COMPANION_RIGHT_TEXTURE], 0, nullptr);
+    vkCmdDrawIndexed(current_command_buffer_.command_buffer, companion_window_index_size_ / 2, 1, (companion_window_index_size_ / 2), 0, 0);
+
+    // End the renderpass
+    vkCmdEndRenderPass(current_command_buffer_.command_buffer);
+
+    // Transition the swapchain image to PRESENT_SRC for presentation
+    image_memory_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    image_memory_barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+
+    // Transition both of the eye textures to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL for SteamVR which requires this layout for submit
+    image_memory_barrier.image = left_eye_desc_.image;
+    image_memory_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    image_memory_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    image_memory_barrier.oldLayout = left_eye_desc_.image_layout;
+    image_memory_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    left_eye_desc_.image_layout = image_memory_barrier.newLayout;
+
+    image_memory_barrier.image = right_eye_desc_.image;
+    vkCmdPipelineBarrier(current_command_buffer_.command_buffer, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &image_memory_barrier);
+    right_eye_desc_.image_layout = image_memory_barrier.newLayout;
+  }
+
   // updateHMDMatrixPose();
   //-------------------------------------------------------------------------//
   //-------------------------------------------------------------------------//
